@@ -1,0 +1,17 @@
+# vscode settings
+*/.vscode/
+
+# ignore the checkpoints directory
+checkpoints/
+
+# ignore the output directory
+output/
+
+# ignore the datasets directory
+datasets/
+
+# ignore the IsaacLab directory link
+IsaacLab/_isaac_sim
+
+# ignore the CLRF to LF conversion script
+crlf2lf.sh
