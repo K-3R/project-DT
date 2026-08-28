@@ -1,5 +1,7 @@
 #!/usr/bin/env python
-# [ver] office_scan_scene.py 2026-08-26-r3  (ascii-only console/comments)
+# [ver] office_scan_scene.py 2026-08-28-r4  (ascii-only console/comments)
+# r4: 스캔 자산 위치 datasets/ -> envs/office_scan/assets/ (env 자산 동거;
+#     파일 내용 동일이라 프로토콜 office-scan-v1 유지)
 # r3: effective JSON 에 portrait_side / desk_color_raw 기록 (로깅 보강만 --
 #     값 불변이라 프로토콜은 office-scan-v1 유지)
 # r2: 프로토콜 상수 명문화, 구운 가구 정책 2원화(기본값+delattr), 색 변환
@@ -57,7 +59,8 @@ def __getattr__(name):
 # ---- 확정값 (08-25 실측/튜닝 종결) ---------------------------------------
 # 이 블록이 벤치마크 프로토콜의 정본이다. 값 변경 = PROTOCOL 버전업.
 PROTOCOL = "office-scan-v1"
-SCAN_USD_DEFAULT = "/root/project/datasets/take6_desk_hq.usd"
+# 자산은 env 폴더에 동거한다 (env4 = 코드+프로토콜+자산 자기완결)
+SCAN_USD_DEFAULT = "/root/project/isaac_franka/envs/office_scan/assets/take6_desk_hq.usd"
 SCAN_SCALE_DEFAULT = 1.73  # 자산(칸막이 장축=1.4m 가정) -> 실물(벤치 2.4m)
 DESK_COLOR_DEFAULT = "0.878,0.878,0.871"  # 스캔 상판 클린패치 중앙값 (sRGB)
 PEDESTAL_COLOR_DEFAULT = "0.28,0.28,0.30"  # 로봇 받침대 (어두운 회색)

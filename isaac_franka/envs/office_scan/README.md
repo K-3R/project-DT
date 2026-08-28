@@ -90,7 +90,8 @@ CLIENT_GPU=<GPU> EPISODES_PER_N=10 VIDEO=1 PORT=5561 bash run_eval_office_scan.s
 폰 영상 take6 -> 2dgs: gsrecon/run_recon.sh (COLMAP+학습+bounded 메시)
   -> postprocess_mesh.py --pick-plane ... (정렬/스케일/크롭; 사이드카 json)
   -> replica_to_usd.py --up z --floor-pct -1 --no-recenter (sRGB->linear)
-  -> datasets/take6_desk_hq.usd  (+ .json 사이드카가 있으면 씬이 로그로 출력)
+  -> envs/office_scan/assets/take6_desk_hq.usd  (env 자산 동거; + .json
+     사이드카가 있으면 씬이 로그로 출력)
 ```
 
 새 스캔(take7...)으로 교체할 때는 **scan-scale 재캘리브레이션이 필수**다

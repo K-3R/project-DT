@@ -15,3 +15,9 @@ IsaacLab/_isaac_sim
 
 # ignore the CLRF to LF conversion script
 crlf2lf.sh
+# python build artifacts
+__pycache__/
+*.egg-info/
+
+# runtime outputs
+out/

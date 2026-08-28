@@ -24,13 +24,12 @@ if [ "$MODE" = "all" ]; then
   PATTERNS=("isaac-sim" "kit" "python.sh" "isaaclab.sh")
 else
   # 현행 진입점 전부 (office_scan 은 오버레이 wrapper 이름이 cmdline 에
-  # 뜨므로 자기 이름이 필요하다). robocasa 시절 패턴은 잔존 호환용
-  PATTERNS=("dual_franka_scene.py" "dual_franka_stack_sm.py" "isaac_franka_gr00t.py"
+  # 뜨므로 자기 이름이 필요하다)
+  PATTERNS=("dual_franka_scene.py" "dual_franka_stack_sm.py"
             "dual_franka_gr00t_eval.py" "dual_franka_office_eval.py"
             "dual_franka_office_sm.py" "preview_office.py" "preview_replica.py"
             "eval_office_scan.py" "gen_office_scan.py" "preview_office_scan.py"
-            "rerender_wrist_views.py" "replica_to_usd.py"
-            "isaac_robocasa_min.py" "generate_dataset.py" "annotate_demos.py")
+            "rerender_wrist_views.py" "replica_to_usd.py")
 fi
 
 echo "[kill] container=$CONTAINER mode=$MODE"
