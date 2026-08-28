@@ -5,51 +5,52 @@
 # Sanghyeok Park, SSL undergraduate
 # Edit 2026-08-28
 # ======================================
-# [ver] postprocess_mesh.py 2026-08-26-r3  (ascii-only console/comments)
-# r3: 픽 1-3 퇴화(일직선/중복) 가드, cut-above 는 pick 모드에서 픽 1-3 만
-#     피팅 (픽 4 = 상판 기준점이라 섞으면 절단면이 기움) + 비공면 경고,
-#     저장 전 빈 메시 가드
-# r2: 모드 해소(ransac|pick|raw 상호배타) + 스테이지별 좌표 재독 불변식
-#     + 크롭 박스 목록 단일화 + 픽 파싱 통일 + 사이드카 json 기록
-"""2DGS TSDF 메시 -> Isaac 배경용 정렬/스케일/정리 (파이프라인 후처리).
+# [ver] postprocess_mesh.py 2026-08-28-r4  (ascii-only console/comments)
+# r4: main() 을 stage 함수로 분리 + 주석 정리 (동작 동일)
+# r3: pick 1-3 퇴화(일직선/중복) guard, cut-above 는 pick mode 에서 pick 1-3 만
+#     fitting (pick 4 = 상판 기준점이라 섞으면 절단면이 기움) + 비공면 경고,
+#     저장 전 빈 mesh guard
+# r2: mode 해소(ransac|pick|raw 상호배타) + stage 별 좌표 재독 불변식
+#     + crop box 목록 단일화 + pick parsing 통일 + sidecar json 기록
+"""2DGS TSDF mesh -> Isaac 배경용 정렬/scale/정리. pipeline 후처리.
 
-COLMAP 좌표계는 방향/크기/원점이 전부 임의라서, 메시를 그대로 USD 로
-바꾸면 Isaac 에서 삐딱하고 크기도 엉터리다. 이 스크립트가 표준 자세
-(상판 중심 원점, 상판 = z0, 미터 단위)로 만든다.
+COLMAP 좌표계는 방향/크기/원점이 전부 임의 -> mesh 를 그대로 USD 로 바꾸면
+Isaac 에서 삐딱하고 크기도 엉터리. 여기서 표준 자세로 만듦
+(상판 중심 원점, 상판 = z0, 미터 단위).
 
-정렬 모드 (상호배타, 하나만):
-    (기본) RANSAC 자동   밀집 코어에서 평면 후보를 찾아 상판으로 가정.
-                         --plane-idx / --flip / --yaw-deg 로 교정.
-    --pick-plane         meshlab 픽 4점으로 직접 정렬 (RANSAC 불신 시 정본).
-                         픽 1-3 = 칸막이 상단 (비일직선 3점 = 수평 기준면),
-                         픽 4 = 상판 위 한 점 (z=0), 픽 1->3 = x축.
-                         --pick 4점 + --scale 필수.
-    --raw-frame          정렬 생략 (이미 이 스크립트로 정렬된 파일의 재가공).
-                         --scale 은 단위 보정용으로 계속 적용된다.
+정렬 mode (상호배타, 하나만)
+    (기본) RANSAC 자동   밀집 core 에서 평면 후보를 찾아 상판으로 가정.
+                         --plane-idx / --flip / --yaw-deg 로 교정
+    --pick-plane         meshlab pick 4점으로 직접 정렬 (RANSAC 불신 시 정본).
+                         pick 1-3 = 칸막이 상단 (비일직선 3점 = 수평 기준면),
+                         pick 4 = 상판 위 한 점 (z=0), pick 1->3 = x축.
+                         --pick 4점 + --scale 필수
+    --raw-frame          정렬 생략 (이미 이 script 로 정렬된 파일의 재가공).
+                         --scale 은 단위 보정용으로 계속 적용
 
-레시피 1 -- RANSAC 자동 (첫 시도):
+recipe 1 -- RANSAC 자동 (첫 시도)
     python scan/postprocess_mesh.py --ply <fuse.ply> --out <out.ply>
-    리포트의 평면 목록(extent 로 상판/껍질 판별)과 프리뷰를 보고
-    --plane-idx / --flip 을 교정해 재실행한다 (수 분짜리라 싸다).
+    report 의 평면 목록(extent 로 상판/껍질 판별)과 preview 를 보고
+    --plane-idx / --flip 교정 후 재실행 (수 분짜리라 부담 없음)
 
-레시피 2 -- 픽 정본 (meshlab 4픽 -> 2단 실행):
-    1) meshlab 에서 raw ply 에 픽 4점 (칸막이 상단 3 + 상판 1)
-    2) 좌표 확인:  --pick "x,y,z;..." --crop-xy 0  로 실행하면 픽들의
-       정렬 좌표와 추천 크롭 박스가 출력된다 (검증: 같은 높이 픽들의
-       z 가 같고, 상판 픽 z = 0 이면 정렬 정답)
-    3) 최종:  --pick-plane --scale <실측/픽거리> --pick "..." --pick-box 1.2
-       (또는 --crop-box 로 정밀 박스)
+recipe 2 -- pick 정본 (meshlab pick 4점 -> 2단 실행)
+    1) meshlab 에서 raw ply 에 pick 4점 (칸막이 상단 3 + 상판 1)
+    2) 좌표 확인: --pick "x,y,z;..." --crop-xy 0 으로 실행 -> pick 들의 정렬
+       좌표와 추천 crop box 출력 (같은 높이 pick 들의 z 일치, 상판 pick z=0
+       이면 정렬 정답)
+    3) 최종: --pick-plane --scale <실측/pick 거리> --pick "..." --pick-box 1.2
+       (또는 --crop-box 로 정밀 box)
 
-파이프라인 순서 (코드 절 번호와 동일):
-    [1] 프레임 계산 -> [2] 적용 -> [3] 픽 출력 -> [4] 재수평(--relevel)
-    -> [5] 천장 절단(--cut-above) -> [6] 크롭 -> [7] 데시메이트
-    -> [8] 성분 필터 -> [9] 평행이동 -> [10] 저장 (+사이드카 json)
-불변식: 메시를 바꾼 스테이지 뒤에서는 반드시 좌표를 다시 읽는다.
-픽 좌표(picks_m)는 재수평까지 따라 변환되므로 이후 스테이지에서 유효하다.
+stage 순서 (main() 의 호출 순서 = 함수 앞 절 번호)
+    [1] frame 계산 -> [2] 적용 -> [3] pick 출력 -> [4] 재수평(--relevel)
+    -> [5] 천장 절단(--cut-above) -> [6] crop -> [7] decimate
+    -> [8] 성분 filter -> [9] 평행이동 -> [10] 저장 (+sidecar json)
+불변식: mesh 를 바꾼 stage 뒤에서는 좌표 재독 필수.
+pick 좌표(picks_m)는 재수평까지 같이 변환 -> 이후 stage 에서 유효.
 
-다음 단계 (변환기에는 정렬을 끄고 넘긴다 -- 여기서 이미 다 했으므로):
+다음 단계 (정렬은 여기서 끝났으니 변환기 쪽 정렬은 끔)
     replica_to_usd.py --up z --floor-pct -1 --no-recenter --ply <out> ...
-주의: z=0 은 바닥이 아니라 "책상 상판"이다 (로봇 리그 배치 기준).
+주의: z=0 은 바닥이 아니라 "책상 상판" (로봇 rig 배치 기준)
 """
 
 import argparse
@@ -61,19 +62,29 @@ from datetime import datetime, timedelta, timezone
 import numpy as np
 import open3d as o3d
 
-# 재수평(--relevel)이 상판 슬랩을 고르는 창 (정렬 프레임 미터 기준).
-# 씬이 바뀌어 슬랩 위치가 다르면 여기를 조정한다 (기본 = office 책상 실측역).
+# 재수평(--relevel)이 상판 slab 을 고르는 창 (정렬 frame 미터 기준).
+# scene 이 바뀌어 slab 위치가 다르면 여기부터 조정 (기본 = office 책상 실측역)
 RELEVEL_Z_ABS = 0.08  # 상판 근방 |z| 허용
 RELEVEL_X_ABS = 0.6  # 책상 폭 안쪽
 RELEVEL_Y_RANGE = (0.05, 0.65)  # 책상 깊이 안쪽
-RELEVEL_TH = 0.008  # 슬랩 RANSAC 거리 임계 [m]
+RELEVEL_TH = 0.008  # slab RANSAC 거리 임계 [m]
 
 
+# arguments (argparse)
 def parse_args():
     p = argparse.ArgumentParser(description="align/scale/crop a 2DGS TSDF mesh")
-    p.add_argument("--ply", required=True, help="input fuse_*_post.ply from 2DGS")
-    p.add_argument("--out", required=True, help="output .ply (binary, vertex colors)")
+    p.add_argument(
+        "--ply",
+        required=True,
+        help="input fuse_*_post.ply from 2DGS",
+    )
+    p.add_argument(
+        "--out",
+        required=True,
+        help="output .ply (binary, vertex colors)",
+    )
 
+    # argument groups (argparse)
     g = p.add_argument_group("alignment (pick exactly one mode)")
     g.add_argument(
         "--pick-plane",
@@ -100,6 +111,7 @@ def parse_args():
         "(front/back is ambiguous -- use 180 if reversed)",
     )
 
+    # argument groups (argparse)
     g = p.add_argument_group("scale")
     g.add_argument(
         "--scale",
@@ -116,6 +128,7 @@ def parse_args():
         "this many meters. 0 = keep original units",
     )
 
+    # argument groups (argparse)
     g = p.add_argument_group("ransac mode knobs")
     g.add_argument(
         "--plane-idx",
@@ -123,7 +136,12 @@ def parse_args():
         default=0,
         help="which RANSAC plane is the desk top (0 = most inliers)",
     )
-    g.add_argument("--n-planes", type=int, default=3, help="candidates to report")
+    g.add_argument(
+        "--n-planes",
+        type=int,
+        default=3,
+        help="candidates to report",
+    )
     g.add_argument(
         "--ransac-th",
         type=float,
@@ -140,6 +158,7 @@ def parse_args():
         "big flat shell patches beating the desk top",
     )
 
+    # argument groups (argparse)
     g = p.add_argument_group("picks")
     g.add_argument(
         "--pick",
@@ -163,6 +182,7 @@ def parse_args():
         "picks). requires --pick",
     )
 
+    # argument groups (argparse)
     g = p.add_argument_group(
         "crop (priority: pick-box > crop-box > auto-box "
         "> crop-xy; crop-box2 unions with the winner)"
@@ -205,6 +225,7 @@ def parse_args():
         help="z window used by --crop-xy and --auto-box",
     )
 
+    # argument groups (argparse)
     g = p.add_argument_group("post steps")
     g.add_argument(
         "--relevel",
@@ -246,9 +267,9 @@ def parse_args():
     return p.parse_args()
 
 
-# ---- 공용 헬퍼 -----------------------------------------------------------
+# ---- 공용 helper -----------------------------------------------------------
 def parse_picks(s):
-    """--pick 문자열 -> (N,3) float 배열. 형식 오류는 즉시 종료."""
+    """--pick 문자열 -> (N,3) float 배열. 형식 오류는 즉시 종료"""
     try:
         pk = np.array(
             [[float(v) for v in t.split(",")] for t in s.split(";") if t.strip()]
@@ -261,8 +282,11 @@ def parse_picks(s):
 
 
 def ransac_plane(pts, th, iters, rng):
-    """시드 고정 RANSAC 평면. open3d segment_plane 은 시드를 못 줘서
-    실행마다 다른 평면이 잡히는 함정이 있다 (08-25 실측) -> 자체 구현."""
+    """seed 고정 RANSAC 평면.
+
+    open3d segment_plane 은 seed 를 못 받아 실행마다 평면이 달라짐
+    (08-25 실측) -> 자체 구현
+    """
     n = pts.shape[0]
     best_cnt, best = 0, None
     for _ in range(iters):
@@ -279,7 +303,7 @@ def ransac_plane(pts, th, iters, rng):
         sys.exit("[postmesh] ERROR: ransac found no plane")
     nrm, p0 = best
     inl = np.abs((pts - p0) @ nrm) < th
-    # SVD 로 평면 정련 후 인라이어 재선정
+    # SVD 로 평면 정련 후 inlier 재선정
     c = pts[inl].mean(axis=0)
     _, _, vt = np.linalg.svd(pts[inl] - c, full_matrices=False)
     nrm = vt[2]
@@ -288,8 +312,10 @@ def ransac_plane(pts, th, iters, rng):
 
 
 def plane_extent(pts, nrm):
-    """평면 인라이어의 장축 강건 폭 (2.5-97.5 백분위). 상판이면 책상폭
-    근처, 껍질/바닥 조각이면 훨씬 큰 값이 나와 판별 지표가 된다."""
+    """평면 inlier 의 장축 강건 폭 (2.5-97.5 백분위).
+
+    상판이면 책상폭 근처, 껍질/바닥 조각이면 훨씬 큼 -> 판별 지표
+    """
     c = pts.mean(axis=0)
     q = pts - c - np.outer((pts - c) @ nrm, nrm)
     _, _, vt = np.linalg.svd(q, full_matrices=False)
@@ -298,7 +324,7 @@ def plane_extent(pts, nrm):
 
 
 def rot_a_to_b(a, b):
-    """단위벡터 a 를 b 로 보내는 회전행렬 (Rodrigues)."""
+    """단위벡터 a -> b 회전행렬 (Rodrigues)"""
     a = a / np.linalg.norm(a)
     b = b / np.linalg.norm(b)
     v = np.cross(a, b)
@@ -331,11 +357,12 @@ def clean_after_removal(mesh):
     mesh.remove_unreferenced_vertices()
 
 
-# ---- 모드 해소 -----------------------------------------------------------
+# ---- mode 해소 -------------------------------------------------------------
 def resolve_mode(a):
-    """정렬 모드 하나를 확정하고, 모드와 모순인 플래그 조합을 조기 거부.
+    """정렬 mode 하나 확정 + mode 와 모순인 flag 조기 거부.
 
-    조용한 무시(플래그를 줬는데 아무 일도 안 일어남)를 없애는 것이 목적."""
+    목적: 조용한 무시(flag 를 줬는데 아무 일도 안 일어남) 제거
+    """
     if a.pick_plane and a.raw_frame:
         sys.exit("[postmesh] ERROR: --pick-plane and --raw-frame are exclusive")
     mode = "pick" if a.pick_plane else ("raw" if a.raw_frame else "ransac")
@@ -351,7 +378,7 @@ def resolve_mode(a):
         sys.exit("[postmesh] ERROR: --pick-box needs --pick")
     if a.cut_above and not a.pick:
         sys.exit("[postmesh] ERROR: --cut-above needs --pick")
-    # 픽 개수 가드 (평면 SVD 는 3점, bbox 는 2점이 최소)
+    # pick 개수 guard (평면 SVD 는 3점, bbox 는 2점이 최소)
     if a.pick:
         n_picks = parse_picks(a.pick).shape[0]
         if a.cut_above and n_picks < 3:
@@ -369,13 +396,15 @@ def resolve_mode(a):
     return mode
 
 
-# ---- [1] 프레임 계산 (M 회전, origin, scale) -----------------------------
+# ---- [1] frame 계산 (M 회전, origin, scale) ----------------------------------
 def frame_ransac(verts, a, rng):
-    """RANSAC 자동 정렬. 반환: M, origin, scale, 상판 인라이어(M-프레임)."""
-    # 함정 (08-25 실측): 씬 전체에서 '최대 평면'을 찾으면 unbounded 배경
-    # 껍질의 큰 평면 조각이 책상 상판을 이긴다 -> 그 폭으로 스케일이 잡혀
-    # 씬 전체가 수십 배 축소된다. 카메라 궤도의 중심 = 책상 = 버텍스 밀집
-    # 코어이므로, 평면 탐색을 밀집 코어(중앙 거리 백분위)로 제한한다.
+    """RANSAC 자동 정렬. 반환: M, origin, scale, 상판 inlier(M-frame).
+
+    함정 (08-25 실측): scene 전체에서 '최대 평면'을 찾으면 unbounded 배경
+    껍질의 큰 조각이 상판을 이김 -> 그 폭으로 scale 이 잡혀 scene 전체가
+    수십 배 축소됨. 카메라 궤도 중심 = 책상 = vertex 밀집 core 이므로
+    평면 탐색을 밀집 core(중앙 거리 백분위)로 제한
+    """
     n_v = verts.shape[0]
     n_s = min(n_v, 300_000)
     sample = verts[rng.choice(n_v, n_s, replace=False)]
@@ -413,8 +442,8 @@ def frame_ransac(verts, a, rng):
         sys.exit(f"[postmesh] ERROR: plane-idx {a.plane_idx} not found")
     nrm, inl = planes[a.plane_idx]
 
-    # 위쪽 결정: 상판 아래는 가려져 버텍스가 적다 -> 많은 쪽을 위로 가정.
-    # 틀리면 --flip (프리뷰 한 번 보고 뒤집는 게 어떤 휴리스틱보다 확실하다)
+    # 위쪽 결정: 상판 아래는 가려져 vertex 가 적음 -> 많은 쪽이 위.
+    # 틀리면 --flip (preview 한 번 보고 뒤집는 게 제일 확실)
     signed = (sample - inl.mean(axis=0)) @ nrm
     n_above = int((signed > 3 * th).sum())
     n_below = int((signed < -3 * th).sum())
@@ -428,7 +457,7 @@ def frame_ransac(verts, a, rng):
     )
     R = rot_a_to_b(up, np.array([0.0, 0.0, 1.0]))
 
-    # yaw: 상판 인라이어 PCA 장축 -> x
+    # yaw: 상판 inlier PCA 장축 -> x
     inl_r = inl @ R.T
     xy = inl_r[:, :2] - inl_r[:, :2].mean(axis=0)
     evals, evecs = np.linalg.eigh(np.cov(xy.T))
@@ -436,7 +465,7 @@ def frame_ransac(verts, a, rng):
     yaw = -np.arctan2(major[1], major[0]) + np.radians(a.yaw_deg)
     M = rot_z(yaw) @ R
 
-    # 원점 = 상판 인라이어 중심/높이, 스케일 = 장축 폭 -> desk-width
+    # 원점 = 상판 inlier 중심/높이, scale = 장축 폭 -> desk-width
     inl_m = inl @ M.T
     origin = np.array(
         [inl_m[:, 0].mean(), inl_m[:, 1].mean(), float(np.median(inl_m[:, 2]))]
@@ -454,7 +483,7 @@ def frame_ransac(verts, a, rng):
 
 
 def frame_pick(a):
-    """픽 4점 정렬. 픽 1-3 = 기준 평면, 픽 4 = z0, 픽 1->3 = x축."""
+    """pick 4점 정렬. pick 1-3 = 기준 평면, pick 4 = z0, pick 1->3 = x축"""
     pk = parse_picks(a.pick)
     if pk.shape[0] < 4:
         sys.exit(
@@ -464,14 +493,14 @@ def frame_pick(a):
     q1, q2, q3, q4 = pk[:4]
     n = np.cross(q2 - q1, q3 - q1)
     n_len = float(np.linalg.norm(n))
-    # 일직선/중복 픽이면 cross=0 -> 0나눗셈 NaN 이 프레임 전체를 오염시킨다
+    # 일직선/중복 pick 이면 cross=0 -> 0나눗셈 NaN 이 frame 전체 오염
     if n_len < 1e-9:
         sys.exit(
             "[postmesh] ERROR: picks 1-3 are collinear or duplicated "
             "(cannot define the reference plane)"
         )
     n = n / n_len
-    # 상판(픽4)은 기준 평면보다 아래 -> n 은 픽4 반대쪽이 위
+    # 상판(pick 4)은 기준 평면보다 아래 -> n 은 pick 4 반대쪽이 위
     if np.dot(q4 - q1, n) > 0:
         n = -n
     if a.flip:
@@ -489,122 +518,103 @@ def frame_pick(a):
     return M, origin, a.scale
 
 
-def main():
-    a = parse_args()
-    mode = resolve_mode(a)
-    rng = np.random.default_rng(0)
-
-    src = os.path.expanduser(a.ply)
-    print(f"[postmesh] read {src}")
-    mesh = o3d.io.read_triangle_mesh(src)
-    verts = np.asarray(mesh.vertices)
-    n_v0, n_t0 = verts.shape[0], np.asarray(mesh.triangles).shape[0]
-    if n_v0 == 0 or n_t0 == 0:
-        sys.exit("[postmesh] ERROR: empty mesh")
+# ---- [3] pick 좌표 변환/출력 (최종 frame 기준) -------------------------------------
+def report_picks(a, M, origin, scale):
+    """pick 들을 정렬 frame 으로 옮겨 출력. 반환: picks_m (pick 없으면 None)"""
+    if not a.pick:
+        return None
+    picks_m = ((parse_picks(a.pick) @ M.T) - origin) * scale
+    for i, p_al in enumerate(picks_m, start=1):
+        print("[postmesh] pick {}: aligned ({:.3f},{:.3f},{:.3f}) m".format(i, *p_al))
+    lo_p, hi_p = picks_m.min(axis=0), picks_m.max(axis=0)
     print(
-        "[postmesh] verts={} tris={} colors={}".format(
-            n_v0, n_t0, "yes" if mesh.has_vertex_colors() else "NO"
+        "[postmesh] pick-suggested box (+5cm margin): "
+        "--crop-box {:.2f} {:.2f} {:.2f} {:.2f} {:.2f} {:.2f}".format(
+            lo_p[0] - 0.05,
+            hi_p[0] + 0.05,
+            lo_p[1] - 0.05,
+            hi_p[1] + 0.05,
+            lo_p[2] - 0.05,
+            hi_p[2] + 0.05,
         )
     )
+    return picks_m
 
-    # ---- [1] 프레임 계산 ----
-    inl_m = None  # ransac 모드에서만 (auto-box 용)
-    if mode == "ransac":
-        M, origin, scale, inl_m = frame_ransac(verts, a, rng)
-    elif mode == "pick":
-        M, origin, scale = frame_pick(a)
-    else:  # raw
-        M, origin = np.eye(3), np.zeros(3)
-        scale = a.scale if a.scale > 0 else 1.0
-        print(f"[postmesh] raw-frame: alignment skipped, scale {scale}")
 
-    # ---- [2] 프레임 적용 ----
-    mesh.vertices = o3d.utility.Vector3dVector(((verts @ M.T) - origin) * scale)
+# ---- [4] 상판 기준 재수평 -------------------------------------------------------
+def relevel(mesh, picks_m, rng):
+    """상판 slab 에 평면을 다시 맞춰 기울기 제거 + z 재영점.
 
-    # ---- [3] 픽 좌표 변환/출력 (최종 프레임 기준) ----
-    picks_m = None
-    if a.pick:
-        picks_m = ((parse_picks(a.pick) @ M.T) - origin) * scale
-        for i, p_al in enumerate(picks_m, start=1):
-            print(
-                "[postmesh] pick {}: aligned ({:.3f},{:.3f},{:.3f}) m".format(i, *p_al)
-            )
-        lo_p, hi_p = picks_m.min(axis=0), picks_m.max(axis=0)
+    pick 기준면이 기운 경우용 (예: 옆판이 앞판보다 낮은데 한 평면으로 pick).
+    pick 좌표도 같이 변환 -> 이후 stage(cut-above/pick-box) 유효.
+    반환: 변환된 picks_m
+    """
+    v = np.asarray(mesh.vertices)
+    sel = (
+        (np.abs(v[:, 2]) < RELEVEL_Z_ABS)
+        & (np.abs(v[:, 0]) < RELEVEL_X_ABS)
+        & (v[:, 1] > RELEVEL_Y_RANGE[0])
+        & (v[:, 1] < RELEVEL_Y_RANGE[1])
+    )
+    if int(sel.sum()) < 5000:
+        sys.exit(
+            "[postmesh] ERROR: relevel found too few desk-slab points "
+            "(window constants at the top of this file may not fit this scene)"
+        )
+    n_lv, inl_lv = ransac_plane(v[sel], RELEVEL_TH, 300, rng)
+    if n_lv[2] < 0:
+        n_lv = -n_lv
+    tilt = float(np.degrees(np.arccos(np.clip(n_lv[2], -1, 1))))
+    R_lv = rot_a_to_b(n_lv, np.array([0.0, 0.0, 1.0]))
+    v = v @ R_lv.T
+    z0_lv = float(np.median((v[sel])[inl_lv][:, 2]))
+    v[:, 2] -= z0_lv
+    mesh.vertices = o3d.utility.Vector3dVector(v)
+    if picks_m is not None:
+        picks_m = picks_m @ R_lv.T
+        picks_m[:, 2] -= z0_lv
+    print(
+        "[postmesh] relevel: desk-slab tilt {:.2f} deg removed, "
+        "z re-zeroed ({:.3f})".format(tilt, z0_lv)
+    )
+    return picks_m
+
+
+# ---- [5] pick 평면 위 절단 (pick 들을 지나는 천장면) ----------------------------------
+def cut_above(mesh, picks_m, mode):
+    """pick 들을 지나는 평면 위쪽(천장)을 제거.
+
+    pick mode 의 pick 4 는 상판 기준점(천장 pick 아님) -> fitting 에 섞으면
+    절단면이 상판 쪽으로 기울어 칸막이 상단이 잘림 -> pick 1-3 만.
+    다른 mode 는 pick 전부가 절단면 pick 이므로 전부 사용
+    """
+    cut_pts = picks_m[:3] if mode == "pick" else picks_m
+    c0 = cut_pts.mean(axis=0)
+    _, sv, vt = np.linalg.svd(cut_pts - c0, full_matrices=False)
+    if sv[1] < 1e-9:
+        sys.exit("[postmesh] ERROR: cut-above picks are collinear (no plane)")
+    n_c = vt[2]
+    if n_c[2] < 0:
+        n_c = -n_c
+    resid = float(np.abs((cut_pts - c0) @ n_c).max())
+    if resid > 0.02:
         print(
-            "[postmesh] pick-suggested box (+5cm margin): "
-            "--crop-box {:.2f} {:.2f} {:.2f} {:.2f} {:.2f} {:.2f}".format(
-                lo_p[0] - 0.05,
-                hi_p[0] + 0.05,
-                lo_p[1] - 0.05,
-                hi_p[1] + 0.05,
-                lo_p[2] - 0.05,
-                hi_p[2] + 0.05,
-            )
+            "[postmesh] WARNING: cut-above picks deviate {:.3f} m from a "
+            "single plane -- the cut will not follow them exactly".format(resid)
         )
+    v = np.asarray(mesh.vertices)
+    above = ((v - c0) @ n_c) > 0.005
+    mesh.remove_vertices_by_mask(above)
+    clean_after_removal(mesh)
+    print(
+        "[postmesh] cut-above pick plane: removed {} verts, "
+        "normal ({:.2f},{:.2f},{:.2f})".format(int(above.sum()), *n_c)
+    )
 
-    # ---- [4] 상판 기준 재수평 ----
-    # 픽 기준면이 기울었을 때 (예: 옆판이 앞판보다 낮은데 한 평면으로 픽)
-    # 진짜 수평 기준인 상판 슬랩에 평면을 다시 맞춰 기울기를 제거한다.
-    # 픽 좌표도 같이 변환해 이후 스테이지(cut-above/pick-box)가 유효하다.
-    if a.relevel:
-        v = np.asarray(mesh.vertices)
-        sel = (
-            (np.abs(v[:, 2]) < RELEVEL_Z_ABS)
-            & (np.abs(v[:, 0]) < RELEVEL_X_ABS)
-            & (v[:, 1] > RELEVEL_Y_RANGE[0])
-            & (v[:, 1] < RELEVEL_Y_RANGE[1])
-        )
-        if int(sel.sum()) < 5000:
-            sys.exit(
-                "[postmesh] ERROR: relevel found too few desk-slab points "
-                "(window constants at the top of this file may not fit this scene)"
-            )
-        n_lv, inl_lv = ransac_plane(v[sel], RELEVEL_TH, 300, rng)
-        if n_lv[2] < 0:
-            n_lv = -n_lv
-        tilt = float(np.degrees(np.arccos(np.clip(n_lv[2], -1, 1))))
-        R_lv = rot_a_to_b(n_lv, np.array([0.0, 0.0, 1.0]))
-        v = v @ R_lv.T
-        z0_lv = float(np.median((v[sel])[inl_lv][:, 2]))
-        v[:, 2] -= z0_lv
-        mesh.vertices = o3d.utility.Vector3dVector(v)
-        if picks_m is not None:
-            picks_m = picks_m @ R_lv.T
-            picks_m[:, 2] -= z0_lv
-        print(
-            "[postmesh] relevel: desk-slab tilt {:.2f} deg removed, "
-            "z re-zeroed ({:.3f})".format(tilt, z0_lv)
-        )
 
-    # ---- [5] 픽 평면 위 절단 (픽들을 지나는 천장면) ----
-    if a.cut_above:
-        # pick 모드의 픽 4 는 상판 기준점(천장 픽이 아님)이라 피팅에 섞으면
-        # 절단면이 상판 쪽으로 기울어 칸막이 상단이 잘린다 -> 픽 1-3 만.
-        # 다른 모드에서는 픽 전부가 절단면 픽이므로 전부 쓴다.
-        cut_pts = picks_m[:3] if mode == "pick" else picks_m
-        c0 = cut_pts.mean(axis=0)
-        _, sv, vt = np.linalg.svd(cut_pts - c0, full_matrices=False)
-        if sv[1] < 1e-9:
-            sys.exit("[postmesh] ERROR: cut-above picks are collinear (no plane)")
-        n_c = vt[2]
-        if n_c[2] < 0:
-            n_c = -n_c
-        resid = float(np.abs((cut_pts - c0) @ n_c).max())
-        if resid > 0.02:
-            print(
-                "[postmesh] WARNING: cut-above picks deviate {:.3f} m from a "
-                "single plane -- the cut will not follow them exactly".format(resid)
-            )
-        v = np.asarray(mesh.vertices)
-        above = ((v - c0) @ n_c) > 0.005
-        mesh.remove_vertices_by_mask(above)
-        clean_after_removal(mesh)
-        print(
-            "[postmesh] cut-above pick plane: removed {} verts, "
-            "normal ({:.2f},{:.2f},{:.2f})".format(int(above.sum()), *n_c)
-        )
-
-    # ---- [6] 크롭 (정렬 프레임 미터, 우선순위는 --help 참조) ----
+# ---- [6] crop (정렬 frame 미터, 우선순위는 --help 참조) -----------------------------
+def crop(mesh, a, picks_m, inl_m, origin, scale):
+    """crop box 결정 + 적용. 반환: 사용한 box 목록 (sidecar 기록용)"""
     boxes = []
     if a.pick_box > 0:
         lo_p, hi_p = picks_m.min(axis=0), picks_m.max(axis=0)
@@ -628,7 +638,7 @@ def main():
     elif a.crop_box is not None:
         boxes.append(list(a.crop_box))
     elif a.auto_box:
-        # 상판 인라이어의 발자국(footprint)이 곧 책상 xy 범위다
+        # 상판 inlier 의 발자국(footprint) = 책상 xy 범위
         inl_s = (inl_m - origin) * scale
         mgn = 0.05
         boxes.append(
@@ -669,20 +679,29 @@ def main():
                 desc, n_before, len(mesh.vertices)
             )
         )
+    return boxes
 
-    # ---- [7] 데시메이트 ----
+
+# ---- [7] decimate --------------------------------------------------------
+def decimate(mesh, target_tris):
+    """목표 삼각형 수로 단순화. 반환: 새 mesh (open3d 는 복사본을 줌)"""
     n_t = np.asarray(mesh.triangles).shape[0]
-    if a.target_tris > 0 and n_t > a.target_tris:
-        mesh = mesh.simplify_quadric_decimation(a.target_tris)
+    if target_tris > 0 and n_t > target_tris:
+        mesh = mesh.simplify_quadric_decimation(target_tris)
         print(
             "[postmesh] decimate tris {} -> {}".format(
                 n_t, np.asarray(mesh.triangles).shape[0]
             )
         )
+    return mesh
 
-    # ---- [8] 부유물(구름) 제거: 연결 성분 필터 ----
-    # 반사/커버리지 부족이 만든 부유물은 본체와 연결되지 않은 작은 섬이다.
-    # 데시메이트 후 기준이라 임계값 스케일이 예측 가능하다.
+
+# ---- [8] 부유물(구름) 제거: 연결 성분 filter ----------------------------------------
+def filter_components(mesh, a):
+    """본체와 안 이어진 작은 섬 제거 (반사/coverage 부족이 만든 부유물).
+
+    decimate 후 기준이라 임계값 scale 이 예측 가능
+    """
     if a.keep_comps > 0:
         tc, cn, _ = mesh.cluster_connected_triangles()
         tc, cn = np.asarray(tc), np.asarray(cn)
@@ -710,16 +729,15 @@ def main():
             )
         )
 
-    # ---- [9] 평행이동 (원점 위치 조정) ----
-    if any(a.shift):
-        mesh.vertices = o3d.utility.Vector3dVector(
-            np.asarray(mesh.vertices) + np.array(a.shift)
-        )
-        print("[postmesh] shift ({:.2f},{:.2f},{:.2f}) m".format(*a.shift))
 
-    # ---- [10] 저장 + 사이드카 json (자산 계보 기록) ----
-    # 크롭/절단이 전부 지웠으면 여기서 명시적으로 죽는다 (open3d 는 빈
-    # 메시 쓰기를 거부해 "failed to write" 만 남아 원인 추적이 어렵다)
+# ---- [10] 저장 + sidecar json (자산 계보 기록) -----------------------------------
+def save(mesh, a, src, mode, M, origin, scale, boxes):
+    """저장 + 계보 json. 빈 mesh 는 저장 전에 명시적으로 중단.
+
+    open3d 는 빈 mesh 쓰기를 거부하고 "failed to write" 만 남겨 원인 추적이
+    어려움 -> 여기서 먼저 죽음. sidecar json 은 scene 쪽 scale 검증 / pick
+    재변환 / take 세대 추적용
+    """
     if len(mesh.vertices) == 0 or len(mesh.triangles) == 0:
         sys.exit(
             "[postmesh] ERROR: all geometry removed before save "
@@ -746,11 +764,9 @@ def main():
     )
     print(f"[postmesh] wrote {out} ({os.path.getsize(out)/1e6:.1f} MB)")
 
-    # 사이드카: 어느 입력/모드/변환으로 만든 자산인지 파일로 남긴다
-    # (씬 쪽에서 scale 검증, 픽 재변환, take 세대 추적에 쓰는 계보 기록)
     kst = datetime.now(timezone(timedelta(hours=9))).strftime("%Y-%m-%d %H:%M KST")
     meta = {
-        "ver": "postprocess_mesh 2026-08-26-r3",
+        "ver": "postprocess_mesh 2026-08-28-r4",
         "date": kst,
         "source_ply": src,
         "mode": mode,
@@ -770,6 +786,57 @@ def main():
         json.dump(meta, f, indent=2)
     print(f"[postmesh] sidecar {out}.json")
     print("[postmesh] next: replica_to_usd.py --up z --floor-pct -1 --no-recenter")
+
+
+def main():
+    a = parse_args()
+    mode = resolve_mode(a)
+    rng = np.random.default_rng(0)
+
+    src = os.path.expanduser(a.ply)
+    print(f"[postmesh] read {src}")
+    mesh = o3d.io.read_triangle_mesh(src)
+    verts = np.asarray(mesh.vertices)
+    n_v0, n_t0 = verts.shape[0], np.asarray(mesh.triangles).shape[0]
+    if n_v0 == 0 or n_t0 == 0:
+        sys.exit("[postmesh] ERROR: empty mesh")
+    print(
+        "[postmesh] verts={} tris={} colors={}".format(
+            n_v0, n_t0, "yes" if mesh.has_vertex_colors() else "NO"
+        )
+    )
+
+    # [1] frame 계산
+    inl_m = None  # ransac mode 에서만 (auto-box 용)
+    if mode == "ransac":
+        M, origin, scale, inl_m = frame_ransac(verts, a, rng)
+    elif mode == "pick":
+        M, origin, scale = frame_pick(a)
+    else:  # raw
+        M, origin = np.eye(3), np.zeros(3)
+        scale = a.scale if a.scale > 0 else 1.0
+        print(f"[postmesh] raw-frame: alignment skipped, scale {scale}")
+
+    # [2] frame 적용
+    mesh.vertices = o3d.utility.Vector3dVector(((verts @ M.T) - origin) * scale)
+
+    picks_m = report_picks(a, M, origin, scale)  # [3]
+    if a.relevel:
+        picks_m = relevel(mesh, picks_m, rng)  # [4]
+    if a.cut_above:
+        cut_above(mesh, picks_m, mode)  # [5]
+    boxes = crop(mesh, a, picks_m, inl_m, origin, scale)  # [6]
+    mesh = decimate(mesh, a.target_tris)  # [7]
+    filter_components(mesh, a)  # [8]
+
+    # [9] 평행이동 (원점 위치 조정)
+    if any(a.shift):
+        mesh.vertices = o3d.utility.Vector3dVector(
+            np.asarray(mesh.vertices) + np.array(a.shift)
+        )
+        print("[postmesh] shift ({:.2f},{:.2f},{:.2f}) m".format(*a.shift))
+
+    save(mesh, a, src, mode, M, origin, scale, boxes)  # [10]
 
 
 if __name__ == "__main__":

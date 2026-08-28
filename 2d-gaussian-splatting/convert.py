@@ -15,15 +15,14 @@
 # Edit 2026-08-28
 # ======================================
 # [ver] convert.py upstream + team-sr local patches r4 (2026-08-26)
-#   p1: os.system wait status 절단 수정 -- 모든 실패 경로 exit(1) 통일
-#       (wait status 는 코드<<8 이라 그대로 exit() 하면 하위 8비트=0
-#        -> 호출 스크립트가 실패를 놓친다. 실측: mapper code 256 -> rc 0)
-#   p2: --max_num_features 노브 (1080p 특징점 폭증 -> CPU 매칭 16배 방지)
-#   p3: mapper 의 ba_global_function_tolerance 를 버전 조회 후 조건부 부착
-#   p4: mapper 산출물 검증 -- 모델 0개 재구성도 rc=0 이라, 재실행 시
-#       이전 런의 stale distorted/sparse/0 를 undistorter 가 조용히
-#       소비하는 것을 막는다 (이번 실행이 실제로 새로 썼는지 mtime 확인)
-# upstream 을 갱신하면 이 패치들이 사라진다 -- diff 로 복원할 것.
+#   p1: os.system wait status 절단 수정 -- 실패 경로 전부 exit(1) 통일
+#       (wait status = code<<8, 그대로 exit() 하면 하위 8bit=0 이라 호출
+#        script 가 실패를 놓침. 실측: mapper code 256 -> rc 0)
+#   p2: --max_num_features knob (1080p 특징점 폭증 -> CPU matching 16배 방지)
+#   p3: mapper 의 ba_global_function_tolerance 버전 조회 후 조건부 부착
+#   p4: mapper 산출물 검증 -- 이전 run 의 stale sparse/0 소비 차단
+#       (이번 실행이 실제로 새로 썼는지 mtime 확인)
+# upstream 갱신 시 패치 소실 -- diff 로 복원할 것
 #
 
 import os
@@ -62,9 +61,9 @@ parser.add_argument(
     "--resize",
     action="store_true",
 )
-# 2026-08-25 patch: 이미지당 SIFT 특징점 상한 (0 = colmap 기본값 8192).
-# 1080p 입력은 기본 상한까지 차는데, CPU 전수매칭 비용은 쌍당 F^2 라
-# ~2000(take1) 대비 ~16배로 폭증한다 (실측: take5 첫 블록 미완주).
+# p2: 이미지당 SIFT 특징점 상한 (0 = colmap 기본값 8192).
+# 1080p 는 기본 상한까지 참. CPU 전수 matching 비용은 쌍당 F^2 라
+# ~2000(take1) 대비 ~16배 폭증 (실측: take5 첫 block 미완주)
 parser.add_argument(
     "--max_num_features",
     default=0,
@@ -122,10 +121,9 @@ if not args.skip_matching:
     ### Bundle adjustment
     # The default Mapper tolerance is unnecessarily large,
     # decreasing it speeds up bundle adjustment steps.
-    # 2026-08-20 patch: 이 옵션은 COLMAP 버전에 따라 존재하지 않는다
-    # (3.11 에서 옵션 정리). 없는 버전에 넘기면 mapper 가 통째로
-    # "unrecognised option" 으로 죽어 매칭 결과가 버려지므로,
-    # 도움말을 조회해 지원할 때만 붙인다.
+    # p3: 이 옵션은 COLMAP 버전에 따라 없음 (3.11 에서 옵션 정리).
+    # 없는 버전에 넘기면 mapper 전체가 "unrecognised option" 으로 죽어
+    # matching 결과가 버려짐 -> 도움말 조회 후 지원할 때만 부착
     ba_opt = ""
     mapper_help = os.popen(colmap_command + " mapper -h 2>&1").read()
     if "ba_global_function_tolerance" in mapper_help:
@@ -141,10 +139,9 @@ if not args.skip_matching:
     if exit_code != 0:
         logging.error(f"Mapper failed with code {exit_code}. Exiting.")
         exit(1)  # p1: wait status 절단 방지 (파일 헤더 참조)
-    # p4: mapper 는 모델을 하나도 못 만들어도 rc=0 으로 끝날 수 있다.
-    # 재실행 시 distorted/sparse/0 에 이전 런의 stale 모델이 남아 있으면
-    # 아래 undistorter 가 그걸 조용히 소비해 옛 포즈로 파이프라인이
-    # 계속 진행되므로, 이번 실행이 실제로 모델을 새로 썼는지 검증한다.
+    # p4: mapper 는 모델 0개여도 rc=0 가능. 재실행 시 distorted/sparse/0 에
+    # 이전 run 의 stale 모델이 남아 있으면 undistorter 가 조용히 소비해
+    # 옛 pose 로 pipeline 이 계속 진행됨 -> 새로 쓴 모델인지 검증
     model_images = args.source_path + "/distorted/sparse/0/images.bin"
     if not os.path.exists(model_images):
         logging.error(

@@ -7,82 +7,46 @@
 # ======================================
 # [ver] run_scan.sh 2026-08-28  (구명: gsrecon_run.sh -> run_recon.sh -> run_scan.sh)
 # =============================================================================
-# 연구실 스캔 -> 메시 파이프라인 (영상 1개 -> 버텍스컬러 PLY)
+# scan -> mesh pipeline (영상 1개 -> vertex color PLY)
 #
-# 단계: [1] 영상->프레임  [2] COLMAP 포즈  [3] 2DGS 학습  [4] 메시 추출
-# 어느 단계부터 다시 할지 STAGE 로 고를 수 있다 (앞 단계 산출물은 재사용).
+# 단계: [1] 영상->frame  [2] COLMAP pose  [3] 2DGS 학습  [4] mesh 추출
+#       STAGE=시작 단계, UNTIL=끝 단계 (앞 단계 산출물은 재사용)
 #
-# 실행 (2DGS env 안에서, 레포 루트에서):
-#   conda activate surfel_splatting
-#   GPU=5 bash scan/run_scan.sh data/raw/desk.mp4      # 또는 파일명만: desk.mp4
+# 실행 (repo root 에서, surfel_splatting env):
+#   GPU=5 bash scan/run_scan.sh data/raw/desk.mp4       # 파일명만도 가능
+#   GPU=5 UNTIL=2 bash scan/run_scan.sh <video>         # COLMAP 까지만
+#   GPU=5 STAGE=4 MESH=bounded bash scan/run_scan.sh <video>    # mesh 만 다시
 #
-#   GPU=5 UNTIL=2 bash scan/run_scan.sh <video>   # COLMAP 까지만 (첫 판 점검)
-#   GPU=5 STAGE=3 bash scan/run_scan.sh <video>    # 학습부터 다시
-#   GPU=5 STAGE=4 MESH=bounded bash scan/run_scan.sh <video>   # 메시만 다시
-#
-# 산출물
-#   data/raw/*.mp4                     원본 영상 (여기에 올린다)
-#   data/<scene>/input/                프레임
-#   data/<scene>/sparse/, images/      COLMAP (convert.py 결과)
-#   output/<scene>/                    2DGS 모델
-#   output/<scene>/train/ours_30000/fuse_unbounded_post.ply   <- 최종 메시
-#   (data/ output/ 은 .gitignore 되어 있다)
-#
-# CPU: 기본 8코어로 제한된다. 어느 코어를 쓸지는 실행 시점에 가장 한가한
-#      것으로 자동 선택 (pick_cores.py). CORES=16 개수 변경 / CORES=0 해제
-#      / CORE_LIST="32-39" 직접 지정.
-# COLMAP: CUDA 빌드 여부를 자동 판별한다 (ldd 로 libcudart 확인).
-#      CUDA 없는 빌드면 GPU SIFT 가 OpenGL 폴백 -> 헤드리스에서 크래시하므로
-#      자동으로 CPU 모드(--no_gpu)로 돌리고 코어를 32 로 올린다.
-#      COLMAP_GPU=1|0 강제 / COLMAP_BIN=<경로> 로 CUDA 빌드 지정 가능.
-# 주의: 공용 서버 -- GPU 는 nvidia-smi 로 여유 20GB+ 확인 후 지정할 것.
+# 산출물: data/<scene>/{input,sparse,images}/, output/<scene>/
+#         최종 mesh = output/<scene>/train/ours_30000/fuse_unbounded_post.ply
 # =============================================================================
 set -u
 
 VIDEO="${1:-}"
-# 공용 서버 규약: GPU 는 반드시 명시 (기본값이 조용히 0번 카드를 무는
-# 사고 방지 -- 학습(3)과 메시(4)가 진짜로 GPU 를 쓴다)
-GPU="${GPU:-}"
-STAGE="${STAGE:-1}"          # 어느 단계부터 (1=프레임 2=colmap 3=학습 4=메시)
-UNTIL="${UNTIL:-4}"          # 어디까지 (UNTIL=2 면 COLMAP 까지만 -- 첫 판 점검용)
-MESH="${MESH:-unbounded}"    # unbounded(튜닝 불필요) | bounded(책상 주변만)
-TARGET="${TARGET:-250}"      # 목표 프레임 수
-FORCE="${FORCE:-0}"          # 1 이면 기존 input/ 프레임 덮어쓰기 (stage 1)
-# GRAY=1 이면 프레임을 흑백으로 뽑는다 (메시 색도 흑백이 된다 --
-# 우리 학습 카메라는 RGB 라서 배경만 흑백이면 색 분포가 어긋난다)
-GRAY="${GRAY:-0}"
-ITER="${ITER:-30000}"        # 학습 이터레이션 (2DGS 기본값)
-# 정칙화 = 논문 값. 코드 기본 lambda_dist=0 은 3DGS 포팅 잔재라 그대로 쓰면
-# 깊이왜곡 정칙화가 꺼진 채 학습된다 (표면이 두껍게 뭉개짐).
-# 논문: alpha = 1000(bounded) / 100(unbounded), beta = 0.05
-# 우리 씬은 실내 방 = unbounded -> 100. 물체 하나만 잘라 찍은 경우 1000.
+GPU="${GPU:-}"               # 필수 (기본값 없음 -- GPU 0 오점유 방지)
+STAGE="${STAGE:-1}"          # 시작 단계 (1=frame 2=colmap 3=학습 4=mesh)
+UNTIL="${UNTIL:-4}"          # 끝 단계
+MESH="${MESH:-unbounded}"    # unbounded | bounded(책상 주변만)
+TARGET="${TARGET:-250}"      # 목표 frame 수
+FORCE="${FORCE:-0}"          # 1 = 기존 input/ 덮어쓰기
+GRAY="${GRAY:-0}"            # 1 = frame 흑백 추출 (mesh 색도 흑백이 됨)
+ITER="${ITER:-30000}"        # 학습 iteration
+# lambda = 논문 값. 코드 기본 lambda_dist=0 은 3DGS 잔재 (표면 뭉개짐).
+# 실내 방 = unbounded -> 100, 물체 하나만 잘라 찍으면 1000
 LAMBDA_DIST="${LAMBDA_DIST:-100}"
 LAMBDA_NORMAL="${LAMBDA_NORMAL:-0.05}"
-# depth_ratio 0 = mean depth (README: 무경계/큰 씬은 disk-aliasing 감소)
-DEPTH_RATIO="${DEPTH_RATIO:-0}"
+DEPTH_RATIO="${DEPTH_RATIO:-0}"     # 0 = mean depth (무경계 scene 권장)
 MESH_RES="${MESH_RES:-1024}"
-DEPTH_TRUNC="${DEPTH_TRUNC:-3.0}"   # bounded 모드에서만 사용 [m]
-# bounded TSDF 융합 대역 (씬 유닛). 기본 -1 = 복셀x5 자동. 깊이 노이즈가
-# 대역을 벗어나 구멍/찢김이 생기면 키운다 (구멍 메꿈 <-> 디테일 뭉툭 절충)
-SDF_TRUNC="${SDF_TRUNC:--1}"
-NUM_CLUSTER="${NUM_CLUSTER:-50}"    # 남길 연결 클러스터 수 (부유물 정리)
-# 공용 서버 예의: CPU 코어 제한 (COLMAP mapper 는 기본이 "가용 스레드 전부"라
-# 128 논리코어를 물 수 있다). CORES=0 이면 제한 없음.
-# COLMAP: 시스템 apt 빌드는 CUDA 없이 컴파일된 경우가 많다. 그러면 GPU
-# SIFT 가 OpenGL 로 폴백 -> 화면이 필요해서 헤드리스에서 죽는다
-# (Qt "could not connect to display" -> SIGABRT). 아래에서 자동 판별한다.
-COLMAP_BIN="${COLMAP_BIN:-}"        # 다른 colmap 실행파일 지정 (선택)
+DEPTH_TRUNC="${DEPTH_TRUNC:-3.0}"   # bounded 전용 [m]
+SDF_TRUNC="${SDF_TRUNC:--1}"        # TSDF 융합 대역. -1 = 자동, 구멍나면 키울 것
+NUM_CLUSTER="${NUM_CLUSTER:-50}"    # 남길 연결 cluster 수 (부유물 정리)
+COLMAP_BIN="${COLMAP_BIN:-}"        # colmap 실행파일 직접 지정 (선택)
 COLMAP_GPU="${COLMAP_GPU:-auto}"    # auto | 1 | 0
-# 이미지당 SIFT 특징점 상한. CPU 전수매칭 비용이 쌍당 F^2 라, 1080p 가
-# colmap 기본 상한(8192)을 치면 take1(~2000) 대비 ~16배로 폭증한다
-# (실측: take5 첫 블록 미완주). 2048 = take1 에서 품질 실증된 수준.
-# SIFT_MAXF=0 이면 상한 미지정(colmap 기본 8192).
-SIFT_MAXF="${SIFT_MAXF:-2048}"
-CORES_EXPLICIT="${CORES+1}"         # 사용자가 CORES 를 직접 줬는가
-CORES="${CORES:-8}"
-CORE_LIST="${CORE_LIST:-}"          # 직접 지정 예: "32-39" (비우면 자동 선택)
+SIFT_MAXF="${SIFT_MAXF:-2048}"      # SIFT 특징점 상한. 0 = colmap 기본(8192)
+CORES_EXPLICIT="${CORES+1}"         # CORES 직접 지정 여부
+CORES="${CORES:-8}"                 # CPU core 제한. 0 = 해제
+CORE_LIST="${CORE_LIST:-}"          # 예: "32-39" (비우면 한가한 core 자동 선택)
 
-# 이 스크립트는 scan/ 아래에 있다 -- 레포 루트는 한 단계 위
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 FRAMES="$REPO/scan/extract_frames.py"
 
@@ -94,7 +58,6 @@ if [ -z "$GPU" ]; then
     echo "[scan] ERROR: set GPU explicitly (shared server), e.g. GPU=5 ..."
     exit 1
 fi
-# 노브 오타는 조용히 엉뚱한 산출물이 된다 -- 시작 전에 걸러낸다
 case "$MESH" in bounded|unbounded) ;; *)
     echo "[scan] ERROR: MESH must be bounded|unbounded (got '$MESH')"
     exit 1 ;;
@@ -106,7 +69,7 @@ fi
 if [ "$STAGE" -gt "$UNTIL" ]; then
     echo "[scan] WARNING: STAGE > UNTIL -- nothing will run"
 fi
-# 헤더에 적힌 "파일명만" 호출 지원: data/raw/<이름> 으로 해석해 본다
+# 파일명만 주면 data/raw/ 에서 찾음
 if [ ! -f "$VIDEO" ] && [ -f "$REPO/data/raw/$VIDEO" ]; then
     VIDEO="$REPO/data/raw/$VIDEO"
 fi
@@ -119,7 +82,7 @@ NAME=$(basename "${VIDEO%.*}")
 SCENE="$REPO/data/$NAME"
 MODEL="$REPO/output/$NAME"
 
-# ---- COLMAP CUDA 지원 판별 ----
+# ---- COLMAP CUDA 판별 (CUDA 없는 build 는 headless 에서 죽음 -> CPU mode) ----
 COLMAP_EXE="$COLMAP_BIN"
 [ -z "$COLMAP_EXE" ] && COLMAP_EXE="$(command -v colmap 2>/dev/null)"
 if [ "$COLMAP_GPU" = "auto" ]; then
@@ -131,19 +94,16 @@ if [ "$COLMAP_GPU" = "auto" ]; then
 fi
 if [ "$COLMAP_GPU" = "0" ]; then
     echo "[scan] colmap: CPU mode (no CUDA in $COLMAP_EXE)"
-    # CPU SIFT + 전수 매칭은 스레드가 곧 속도다 -- 직접 지정 안 했으면 늘린다
+    # CPU matching 은 thread 가 곧 속도 -- 직접 지정 없으면 늘림
     [ -z "$CORES_EXPLICIT" ] && CORES=32
 else
     echo "[scan] colmap: GPU mode"
 fi
 
-# CPU 코어 제한 프리픽스
+# ---- CPU core 제한 (taskset) ----
 RUN=""
 if [ "$CORES" != "0" ]; then
     if command -v taskset >/dev/null 2>&1; then
-        # CORE_LIST 를 안 주면 지금 한가한 코어를 골라 온다 (pick_cores.py:
-        # /proc/stat 샘플링 + SMT 형제 회피, 실패 시 0..CORES-1 폴백).
-        # 고정 대역(0-7)은 남들도 흔히 골라 붐빌 수 있어 기본을 자동으로 둔다.
         if [ -z "$CORE_LIST" ]; then
             CORE_LIST=$(python "$REPO/scan/pick_cores.py" --n "$CORES")
         fi
@@ -155,21 +115,19 @@ if [ "$CORES" != "0" ]; then
     fi
 fi
 
-# STAGE..UNTIL 구간만 실행한다
+# STAGE..UNTIL 구간만 실행
 do_stage() { [ "$STAGE" -le "$1" ] && [ "$UNTIL" -ge "$1" ]; }
 
 echo "[scan] scene=$NAME gpu=$GPU stage=$STAGE..$UNTIL mesh=$MESH"
 echo "[scan] scene dir: $SCENE"
-# 재현성 기록: 이 런의 노브를 한 줄로 (로그가 곧 params 기록이 된다)
 echo "[scan] knobs: TARGET=$TARGET GRAY=$GRAY ITER=$ITER" \
      "LAMBDA_DIST=$LAMBDA_DIST LAMBDA_NORMAL=$LAMBDA_NORMAL" \
      "DEPTH_RATIO=$DEPTH_RATIO SIFT_MAXF=$SIFT_MAXF MESH_RES=$MESH_RES" \
      "DEPTH_TRUNC=$DEPTH_TRUNC SDF_TRUNC=$SDF_TRUNC NUM_CLUSTER=$NUM_CLUSTER"
 export CUDA_VISIBLE_DEVICES="$GPU"
 
-# ---- [1] 영상 -> 프레임 ----
-# 영상 여러 개를 한 씬으로 합치려면 extract_frames.py 를 --merge 로 직접
-# 돌린 뒤 STAGE=2 로 이 러너를 부르면 된다.
+# ---- [1] 영상 -> frame ----
+# 여러 영상 합치기: extract_frames.py --merge 로 직접 돌린 뒤 STAGE=2
 if do_stage 1; then
     echo "[scan] ==== 1/4 frames ==== $(date '+%H:%M:%S')"
     EX_FLAGS=""
@@ -179,24 +137,17 @@ if do_stage 1; then
         --target "$TARGET" $EX_FLAGS || exit 1
 fi
 
-# ---- [2] COLMAP 포즈 ----
-# convert.py 는 <scene>/input 을 읽어 distorted/, sparse/, images/ 를 만든다.
-# 서브모델이 여럿 생기면 최대 모델만 남기고 --skip_matching 으로 재실행할 것.
+# ---- [2] COLMAP pose (convert.py -> distorted/, sparse/, images/) ----
 if do_stage 2; then
     echo "[scan] ==== 2/4 colmap ==== $(date '+%H:%M:%S')"
     cd "$REPO" || exit 1
-    # 이전 런 산출물 제거 (DB 가 있는 distorted/ 는 남겨 재사용).
-    # 안 지우면 이번 런이 실패해도 옛 images/ 때문에 등록수가 거짓이 된다.
+    # 옛 산출물 제거. DB 있는 distorted/ 는 남겨 재사용
     rm -rf "$SCENE/images" "$SCENE/sparse"
-    # [!] DB 재사용 게이트: feature_extractor 는 DB 에 이미 있는 이미지의
-    # 특징점을 다시 뽑지 않는다 (take5 실측 -- SIFT_MAXF 를 바꿔도 조용히
-    # 옛 8192 특징점으로 매칭이 돌았다). 특징점에 영향 주는 노브가 이전
-    # 런과 다르면 재사용을 거부하고 삭제를 안내한다.
+    # DB 재사용 gate: 특징점이 DB 안에 살아서 knob 을 바꿔도 조용히 옛
+    # 특징점으로 돎 -> knob(stamp)이 같을 때만 재사용 허용
     N_IN0=$(ls -1 "$SCENE/input"/*.jpg 2>/dev/null | wc -l)
     DB_PARAMS="sift_maxf=$SIFT_MAXF gray=$GRAY frames=$N_IN0"
     DB_STAMP="$SCENE/distorted/.params"
-    # 스탬프 없는 기존 DB = 게이트 도입 이전 산출물 (노브 불명). 통과시키면
-    # 아래에서 현재 노브로 새 스탬프가 찍혀 옛 특징점이 영구 정당화된다.
     if [ -f "$SCENE/distorted/database.db" ] && [ ! -f "$DB_STAMP" ]; then
         echo "[scan] ERROR: distorted/ DB exists but has no .params stamp"
         echo "[scan] (predates the reuse gate -- its knobs are unknown)"
@@ -222,9 +173,7 @@ if do_stage 2; then
         echo "[scan] common causes: motion blur / reflective screens / panning in place"
         exit 1
     }
-    # convert.py 의 종료코드는 신뢰 불가였다 (upstream 이 os.system 의
-    # wait status 를 그대로 exit -> 하위 8비트 0 -> 항상 rc 0).
-    # 패치했지만 산출물로도 재확인한다.
+    # convert.py 는 실패해도 rc 0 인 경우가 있어 산출물로 재확인
     if [ ! -s "$SCENE/sparse/0/images.bin" ]; then
         echo "[scan] ERROR: colmap produced no sparse model ($SCENE/sparse/0)"
         exit 1
@@ -246,9 +195,7 @@ if do_stage 3; then
     fi
     cd "$REPO" || exit 1
     echo "[scan] lambda_dist=$LAMBDA_DIST lambda_normal=$LAMBDA_NORMAL depth_ratio=$DEPTH_RATIO"
-    # 주의: README 의 --lambda_distortion 은 오타. 실제 플래그는 --lambda_dist
-    # --save_iterations: train.py 기본 저장은 7000/30000 뿐이라, ITER 가
-    # 다른 값이면 학습 완주 후 stage 4 가 체크포인트를 못 찾는다 -> 명시 저장
+    # save_iterations 명시: train.py 기본 저장은 7000/30000 뿐
     $RUN python train.py -s "$SCENE" -m "$MODEL" --iterations "$ITER" \
         --save_iterations 7000 "$ITER" \
         --depth_ratio "$DEPTH_RATIO" \
@@ -256,7 +203,7 @@ if do_stage 3; then
         || { echo "[scan] ERROR: train failed"; exit 1; }
 fi
 
-# ---- [4] 메시 추출 (TSDF) ----
+# ---- [4] mesh 추출 (TSDF) ----
 if do_stage 4; then
     echo "[scan] ==== 4/4 mesh ($MESH) ==== $(date '+%H:%M:%S')"
     if [ ! -d "$MODEL/point_cloud/iteration_$ITER" ]; then
@@ -280,8 +227,7 @@ if do_stage 4; then
             || { echo "[scan] ERROR: mesh failed"; exit 1; }
         OUT_NAME="fuse_unbounded_post.ply"
     fi
-    # 사전순 glob 금지: ours_7000 이 ours_30000 보다 뒤로 정렬된다.
-    # 실제로 렌더한 이터 경로를 직접 만든다.
+    # ours_$ITER 경로 직접 구성 (glob 은 ours_7000 이 뒤로 정렬되는 함정)
     PLY="$MODEL/train/ours_$ITER/$OUT_NAME"
     if [ ! -s "$PLY" ]; then
         echo "[scan] ERROR: mesh not produced: $PLY"

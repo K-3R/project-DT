@@ -1,0 +1,7 @@
+./convert.py
+./utils/render_utils.py
+./scan/setup/install_2dgs.sh
+./scan/extract_frames.py
+./scan/pick_cores.py
+./scan/postprocess_mesh.py
+./scan/run_scan.sh

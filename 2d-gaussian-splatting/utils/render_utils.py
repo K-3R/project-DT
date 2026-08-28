@@ -19,10 +19,10 @@
 # Edit 2026-08-28
 # ======================================
 # [ver] render_utils.py upstream + team-sr local patch r1
-#   p1: create_videos 의 depth 정규화 수정 -- 첫 프레임의 무효 픽셀(0)이
-#       백분위에 들어가 log(0)=-inf -> 전 프레임 NaN -> 깊이 비디오가
-#       통째로 검게 나오는 버그 (실측). 유효 픽셀만으로 범위를 잡고
-#       무효 픽셀은 검정으로 표시한다.
+#   p1: create_videos 의 depth 정규화 수정 -- 첫 frame 의 무효 픽셀(0)이
+#       백분위에 들어가 log(0)=-inf -> 전 frame NaN -> depth 비디오
+#       전체가 검게 나오는 버그 (실측). 유효 픽셀만으로 범위 산정,
+#       무효 픽셀은 검정 표시
 # ======================================
 
 import numpy as np
@@ -253,14 +253,14 @@ def create_videos(base_dir, input_dir, out_name, num_frames=480):
     depth_frame = load_img(depth_file)
     shape = depth_frame.shape
     p = 3
-    # p1: 무효 픽셀(0/비유한)을 백분위에서 제외 -- 포함하면 lo=log(0)=-inf
+    # p1: 무효 픽셀(0/non-finite) 백분위 제외 -- 포함 시 lo=log(0)=-inf
     valid = depth_frame[np.isfinite(depth_frame) & (depth_frame > 0)]
     if valid.size == 0:
-        valid = np.array([0.1, 10.0], dtype=np.float32)
+        valid = np.array([0.1, 10.0], dtype=np.float32)  # 전 픽셀 무효 시 fallback 범위
     distance_limits = np.percentile(valid.flatten(), [p, 100 - p])
     lo, hi = [render_dist_curve_fn(x) for x in distance_limits]
     if not np.isfinite(hi - lo) or abs(hi - lo) < 1e-6:
-        lo, hi = lo - 0.5, lo + 0.5
+        lo, hi = lo - 0.5, lo + 0.5  # 단일 depth 등 범위 퇴화 시 폭 확보
     print(f"Video shape is {shape[:2]}")
 
     video_kwargs = {
@@ -306,7 +306,7 @@ def create_videos(base_dir, input_dir, out_name, num_frames=480):
                 if k in ["color", "normal"]:
                     img = img / 255.0
                 elif k.startswith("depth"):
-                    # p1: 무효 픽셀은 로그/정규화에서 제외하고 검정으로 표시
+                    # p1: 무효 픽셀은 log/정규화 제외 후 검정 표시
                     mask = np.isfinite(img) & (img > 0)
                     img = render_dist_curve_fn(np.where(mask, img, 1.0))
                     img = np.clip((img - np.minimum(lo, hi)) / np.abs(hi - lo), 0, 1)
