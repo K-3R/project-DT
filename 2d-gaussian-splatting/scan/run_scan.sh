@@ -1,4 +1,11 @@
 #!/usr/bin/env bash
+# ======================================
+# File: run_scan.sh
+# ======================================
+# Sanghyeok Park, SSL undergraduate
+# Edit 2026-08-28
+# ======================================
+# [ver] run_scan.sh 2026-08-28  (구명: gsrecon_run.sh -> run_recon.sh -> run_scan.sh)
 # =============================================================================
 # 연구실 스캔 -> 메시 파이프라인 (영상 1개 -> 버텍스컬러 PLY)
 #
@@ -7,11 +14,11 @@
 #
 # 실행 (2DGS env 안에서, 레포 루트에서):
 #   conda activate surfel_splatting
-#   GPU=5 bash gsrecon/run_recon.sh data/raw/desk.mp4      # 또는 파일명만: desk.mp4
+#   GPU=5 bash scan/run_scan.sh data/raw/desk.mp4      # 또는 파일명만: desk.mp4
 #
-#   GPU=5 UNTIL=2 bash gsrecon/run_recon.sh <video>   # COLMAP 까지만 (첫 판 점검)
-#   GPU=5 STAGE=3 bash gsrecon/run_recon.sh <video>    # 학습부터 다시
-#   GPU=5 STAGE=4 MESH=bounded bash gsrecon/run_recon.sh <video>   # 메시만 다시
+#   GPU=5 UNTIL=2 bash scan/run_scan.sh <video>   # COLMAP 까지만 (첫 판 점검)
+#   GPU=5 STAGE=3 bash scan/run_scan.sh <video>    # 학습부터 다시
+#   GPU=5 STAGE=4 MESH=bounded bash scan/run_scan.sh <video>   # 메시만 다시
 #
 # 산출물
 #   data/raw/*.mp4                     원본 영상 (여기에 올린다)
@@ -75,36 +82,36 @@ CORES_EXPLICIT="${CORES+1}"         # 사용자가 CORES 를 직접 줬는가
 CORES="${CORES:-8}"
 CORE_LIST="${CORE_LIST:-}"          # 직접 지정 예: "32-39" (비우면 자동 선택)
 
-# 이 스크립트는 gsrecon/ 아래에 있다 -- 레포 루트는 한 단계 위
+# 이 스크립트는 scan/ 아래에 있다 -- 레포 루트는 한 단계 위
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-FRAMES="$REPO/gsrecon/extract_frames.py"
+FRAMES="$REPO/scan/extract_frames.py"
 
 if [ -z "$VIDEO" ]; then
-    echo "[gsrecon] usage: GPU=5 bash gsrecon/run_recon.sh <video.mp4>"
+    echo "[scan] usage: GPU=5 bash scan/run_scan.sh <video.mp4>"
     exit 1
 fi
 if [ -z "$GPU" ]; then
-    echo "[gsrecon] ERROR: set GPU explicitly (shared server), e.g. GPU=5 ..."
+    echo "[scan] ERROR: set GPU explicitly (shared server), e.g. GPU=5 ..."
     exit 1
 fi
 # 노브 오타는 조용히 엉뚱한 산출물이 된다 -- 시작 전에 걸러낸다
 case "$MESH" in bounded|unbounded) ;; *)
-    echo "[gsrecon] ERROR: MESH must be bounded|unbounded (got '$MESH')"
+    echo "[scan] ERROR: MESH must be bounded|unbounded (got '$MESH')"
     exit 1 ;;
 esac
 if ! [[ "$STAGE" =~ ^[1-4]$ ]] || ! [[ "$UNTIL" =~ ^[1-4]$ ]]; then
-    echo "[gsrecon] ERROR: STAGE/UNTIL must be 1..4 (got $STAGE..$UNTIL)"
+    echo "[scan] ERROR: STAGE/UNTIL must be 1..4 (got $STAGE..$UNTIL)"
     exit 1
 fi
 if [ "$STAGE" -gt "$UNTIL" ]; then
-    echo "[gsrecon] WARNING: STAGE > UNTIL -- nothing will run"
+    echo "[scan] WARNING: STAGE > UNTIL -- nothing will run"
 fi
 # 헤더에 적힌 "파일명만" 호출 지원: data/raw/<이름> 으로 해석해 본다
 if [ ! -f "$VIDEO" ] && [ -f "$REPO/data/raw/$VIDEO" ]; then
     VIDEO="$REPO/data/raw/$VIDEO"
 fi
 if [ "$STAGE" -le 1 ] && [ ! -f "$VIDEO" ]; then
-    echo "[gsrecon] ERROR: video not found: $VIDEO"
+    echo "[scan] ERROR: video not found: $VIDEO"
     exit 1
 fi
 
@@ -123,11 +130,11 @@ if [ "$COLMAP_GPU" = "auto" ]; then
     fi
 fi
 if [ "$COLMAP_GPU" = "0" ]; then
-    echo "[gsrecon] colmap: CPU mode (no CUDA in $COLMAP_EXE)"
+    echo "[scan] colmap: CPU mode (no CUDA in $COLMAP_EXE)"
     # CPU SIFT + 전수 매칭은 스레드가 곧 속도다 -- 직접 지정 안 했으면 늘린다
     [ -z "$CORES_EXPLICIT" ] && CORES=32
 else
-    echo "[gsrecon] colmap: GPU mode"
+    echo "[scan] colmap: GPU mode"
 fi
 
 # CPU 코어 제한 프리픽스
@@ -138,23 +145,23 @@ if [ "$CORES" != "0" ]; then
         # /proc/stat 샘플링 + SMT 형제 회피, 실패 시 0..CORES-1 폴백).
         # 고정 대역(0-7)은 남들도 흔히 골라 붐빌 수 있어 기본을 자동으로 둔다.
         if [ -z "$CORE_LIST" ]; then
-            CORE_LIST=$(python "$REPO/gsrecon/pick_cores.py" --n "$CORES")
+            CORE_LIST=$(python "$REPO/scan/pick_cores.py" --n "$CORES")
         fi
         [ -z "$CORE_LIST" ] && CORE_LIST="0-$((CORES - 1))"
         RUN="taskset -c $CORE_LIST"
-        echo "[gsrecon] cpu cores: $CORE_LIST ($CORES)"
+        echo "[scan] cpu cores: $CORE_LIST ($CORES)"
     else
-        echo "[gsrecon] WARNING: taskset not found -- no cpu limit"
+        echo "[scan] WARNING: taskset not found -- no cpu limit"
     fi
 fi
 
 # STAGE..UNTIL 구간만 실행한다
 do_stage() { [ "$STAGE" -le "$1" ] && [ "$UNTIL" -ge "$1" ]; }
 
-echo "[gsrecon] scene=$NAME gpu=$GPU stage=$STAGE..$UNTIL mesh=$MESH"
-echo "[gsrecon] scene dir: $SCENE"
+echo "[scan] scene=$NAME gpu=$GPU stage=$STAGE..$UNTIL mesh=$MESH"
+echo "[scan] scene dir: $SCENE"
 # 재현성 기록: 이 런의 노브를 한 줄로 (로그가 곧 params 기록이 된다)
-echo "[gsrecon] knobs: TARGET=$TARGET GRAY=$GRAY ITER=$ITER" \
+echo "[scan] knobs: TARGET=$TARGET GRAY=$GRAY ITER=$ITER" \
      "LAMBDA_DIST=$LAMBDA_DIST LAMBDA_NORMAL=$LAMBDA_NORMAL" \
      "DEPTH_RATIO=$DEPTH_RATIO SIFT_MAXF=$SIFT_MAXF MESH_RES=$MESH_RES" \
      "DEPTH_TRUNC=$DEPTH_TRUNC SDF_TRUNC=$SDF_TRUNC NUM_CLUSTER=$NUM_CLUSTER"
@@ -164,7 +171,7 @@ export CUDA_VISIBLE_DEVICES="$GPU"
 # 영상 여러 개를 한 씬으로 합치려면 extract_frames.py 를 --merge 로 직접
 # 돌린 뒤 STAGE=2 로 이 러너를 부르면 된다.
 if do_stage 1; then
-    echo "[gsrecon] ==== 1/4 frames ==== $(date '+%H:%M:%S')"
+    echo "[scan] ==== 1/4 frames ==== $(date '+%H:%M:%S')"
     EX_FLAGS=""
     [ "$GRAY" = "1" ] && EX_FLAGS="$EX_FLAGS --gray"
     [ "$FORCE" = "1" ] && EX_FLAGS="$EX_FLAGS --force"
@@ -176,7 +183,7 @@ fi
 # convert.py 는 <scene>/input 을 읽어 distorted/, sparse/, images/ 를 만든다.
 # 서브모델이 여럿 생기면 최대 모델만 남기고 --skip_matching 으로 재실행할 것.
 if do_stage 2; then
-    echo "[gsrecon] ==== 2/4 colmap ==== $(date '+%H:%M:%S')"
+    echo "[scan] ==== 2/4 colmap ==== $(date '+%H:%M:%S')"
     cd "$REPO" || exit 1
     # 이전 런 산출물 제거 (DB 가 있는 distorted/ 는 남겨 재사용).
     # 안 지우면 이번 런이 실패해도 옛 images/ 때문에 등록수가 거짓이 된다.
@@ -191,17 +198,17 @@ if do_stage 2; then
     # 스탬프 없는 기존 DB = 게이트 도입 이전 산출물 (노브 불명). 통과시키면
     # 아래에서 현재 노브로 새 스탬프가 찍혀 옛 특징점이 영구 정당화된다.
     if [ -f "$SCENE/distorted/database.db" ] && [ ! -f "$DB_STAMP" ]; then
-        echo "[gsrecon] ERROR: distorted/ DB exists but has no .params stamp"
-        echo "[gsrecon] (predates the reuse gate -- its knobs are unknown)"
-        echo "[gsrecon]   rm -rf $SCENE/distorted   and rerun STAGE=2"
+        echo "[scan] ERROR: distorted/ DB exists but has no .params stamp"
+        echo "[scan] (predates the reuse gate -- its knobs are unknown)"
+        echo "[scan]   rm -rf $SCENE/distorted   and rerun STAGE=2"
         exit 1
     fi
     if [ -f "$DB_STAMP" ] && [ "$(cat "$DB_STAMP")" != "$DB_PARAMS" ]; then
-        echo "[gsrecon] ERROR: distorted/ DB was built with different knobs"
-        echo "[gsrecon]   old: $(cat "$DB_STAMP")"
-        echo "[gsrecon]   new: $DB_PARAMS"
-        echo "[gsrecon] features live inside the DB -- run:"
-        echo "[gsrecon]   rm -rf $SCENE/distorted   and rerun STAGE=2"
+        echo "[scan] ERROR: distorted/ DB was built with different knobs"
+        echo "[scan]   old: $(cat "$DB_STAMP")"
+        echo "[scan]   new: $DB_PARAMS"
+        echo "[scan] features live inside the DB -- run:"
+        echo "[scan]   rm -rf $SCENE/distorted   and rerun STAGE=2"
         exit 1
     fi
     mkdir -p "$SCENE/distorted"
@@ -211,34 +218,34 @@ if do_stage 2; then
     [ -n "$COLMAP_BIN" ] && CONV_FLAGS="$CONV_FLAGS --colmap_executable $COLMAP_BIN"
     [ "$SIFT_MAXF" != "0" ] && CONV_FLAGS="$CONV_FLAGS --max_num_features $SIFT_MAXF"
     $RUN python convert.py -s "$SCENE" $CONV_FLAGS || {
-        echo "[gsrecon] ERROR: colmap failed."
-        echo "[gsrecon] common causes: motion blur / reflective screens / panning in place"
+        echo "[scan] ERROR: colmap failed."
+        echo "[scan] common causes: motion blur / reflective screens / panning in place"
         exit 1
     }
     # convert.py 의 종료코드는 신뢰 불가였다 (upstream 이 os.system 의
     # wait status 를 그대로 exit -> 하위 8비트 0 -> 항상 rc 0).
     # 패치했지만 산출물로도 재확인한다.
     if [ ! -s "$SCENE/sparse/0/images.bin" ]; then
-        echo "[gsrecon] ERROR: colmap produced no sparse model ($SCENE/sparse/0)"
+        echo "[scan] ERROR: colmap produced no sparse model ($SCENE/sparse/0)"
         exit 1
     fi
     N_IN=$(ls -1 "$SCENE/input"/*.jpg 2>/dev/null | wc -l)
     N_REG=$(ls -1 "$SCENE/images"/* 2>/dev/null | wc -l)
-    echo "[gsrecon] registered $N_REG / $N_IN images"
+    echo "[scan] registered $N_REG / $N_IN images"
     if [ "$N_IN" -gt 0 ] && [ "$N_REG" -lt $((N_IN * 9 / 10)) ]; then
-        echo "[gsrecon] WARNING: registration below 90% -- reconstruction may be poor"
+        echo "[scan] WARNING: registration below 90% -- reconstruction may be poor"
     fi
 fi
 
 # ---- [3] 2DGS 학습 ----
 if do_stage 3; then
-    echo "[gsrecon] ==== 3/4 train (${ITER} iters) ==== $(date '+%H:%M:%S')"
+    echo "[scan] ==== 3/4 train (${ITER} iters) ==== $(date '+%H:%M:%S')"
     if [ ! -s "$SCENE/sparse/0/images.bin" ]; then
-        echo "[gsrecon] ERROR: no colmap model at $SCENE/sparse/0 -- run STAGE=2 first"
+        echo "[scan] ERROR: no colmap model at $SCENE/sparse/0 -- run STAGE=2 first"
         exit 1
     fi
     cd "$REPO" || exit 1
-    echo "[gsrecon] lambda_dist=$LAMBDA_DIST lambda_normal=$LAMBDA_NORMAL depth_ratio=$DEPTH_RATIO"
+    echo "[scan] lambda_dist=$LAMBDA_DIST lambda_normal=$LAMBDA_NORMAL depth_ratio=$DEPTH_RATIO"
     # 주의: README 의 --lambda_distortion 은 오타. 실제 플래그는 --lambda_dist
     # --save_iterations: train.py 기본 저장은 7000/30000 뿐이라, ITER 가
     # 다른 값이면 학습 완주 후 stage 4 가 체크포인트를 못 찾는다 -> 명시 저장
@@ -246,15 +253,15 @@ if do_stage 3; then
         --save_iterations 7000 "$ITER" \
         --depth_ratio "$DEPTH_RATIO" \
         --lambda_dist "$LAMBDA_DIST" --lambda_normal "$LAMBDA_NORMAL" \
-        || { echo "[gsrecon] ERROR: train failed"; exit 1; }
+        || { echo "[scan] ERROR: train failed"; exit 1; }
 fi
 
 # ---- [4] 메시 추출 (TSDF) ----
 if do_stage 4; then
-    echo "[gsrecon] ==== 4/4 mesh ($MESH) ==== $(date '+%H:%M:%S')"
+    echo "[scan] ==== 4/4 mesh ($MESH) ==== $(date '+%H:%M:%S')"
     if [ ! -d "$MODEL/point_cloud/iteration_$ITER" ]; then
-        echo "[gsrecon] ERROR: no checkpoint at $MODEL/point_cloud/iteration_$ITER"
-        echo "[gsrecon] (train saves at its own iterations -- check ITER matches)"
+        echo "[scan] ERROR: no checkpoint at $MODEL/point_cloud/iteration_$ITER"
+        echo "[scan] (train saves at its own iterations -- check ITER matches)"
         exit 1
     fi
     cd "$REPO" || exit 1
@@ -264,25 +271,25 @@ if do_stage 4; then
             --depth_trunc "$DEPTH_TRUNC" --mesh_res "$MESH_RES" \
             --sdf_trunc "$SDF_TRUNC" \
             --num_cluster "$NUM_CLUSTER" \
-            || { echo "[gsrecon] ERROR: mesh failed"; exit 1; }
+            || { echo "[scan] ERROR: mesh failed"; exit 1; }
         OUT_NAME="fuse_post.ply"
     else
         $RUN python render.py -m "$MODEL" -s "$SCENE" --skip_train --skip_test \
             --iteration "$ITER" --depth_ratio "$DEPTH_RATIO" \
             --unbounded --mesh_res "$MESH_RES" --num_cluster "$NUM_CLUSTER" \
-            || { echo "[gsrecon] ERROR: mesh failed"; exit 1; }
+            || { echo "[scan] ERROR: mesh failed"; exit 1; }
         OUT_NAME="fuse_unbounded_post.ply"
     fi
     # 사전순 glob 금지: ours_7000 이 ours_30000 보다 뒤로 정렬된다.
     # 실제로 렌더한 이터 경로를 직접 만든다.
     PLY="$MODEL/train/ours_$ITER/$OUT_NAME"
     if [ ! -s "$PLY" ]; then
-        echo "[gsrecon] ERROR: mesh not produced: $PLY"
+        echo "[scan] ERROR: mesh not produced: $PLY"
         exit 1
     fi
-    echo "[gsrecon] mesh: $PLY"
+    echo "[scan] mesh: $PLY"
     du -h "$PLY"
 fi
 
-echo "[gsrecon] done $(date '+%H:%M:%S')"
-echo "[gsrecon] next: gsrecon/postprocess_mesh.py (align/scale/crop) -> replica_to_usd"
+echo "[scan] done $(date '+%H:%M:%S')"
+echo "[scan] next: scan/postprocess_mesh.py (align/scale/crop) -> replica_to_usd"

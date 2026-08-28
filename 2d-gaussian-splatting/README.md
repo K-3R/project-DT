@@ -160,28 +160,26 @@ python render.py -r 2 --depth_ratio 1 --skip_test --skip_train
 
 ## team-sr: lab-scan pipeline (fork additions)
 
-All fork additions live in **`gsrecon/`** (see `gsrecon/README.md` for the
+All fork additions live in **`scan/`** (see `scan/README.md` for the
 quickstart and the canonical doc pointer). The one exception is `convert.py`,
 which carries local patches -- the patch list is in its file header `[ver]`
 stamp. Everything else in the repo root is vanilla upstream.
 
 | file | role |
 | --- | --- |
-| `gsrecon/run_recon.sh` | end-to-end runner: frames -> COLMAP -> train -> mesh |
-| `gsrecon/extract_frames.py` | scan videos -> COLMAP input images |
-| `gsrecon/pick_cores.py` | idle-CPU-core picker (shared-server etiquette) |
-| `gsrecon/postprocess_mesh.py` | align/scale/crop the mesh into an asset PLY |
-| `gsrecon/make_depth_video.py` | rebuild the trajectory depth video |
-| `gsrecon/setup/install_2dgs.sh` | clone + env + CUDA_HOME submodule build |
-| `gsrecon/setup/git_bootstrap.sh` | one-off GitLab remote setup (do **not** rerun) |
-| `convert.py` | **modified upstream** (exit-code fix, --max_num_features, mapper probe) |
+| `scan/run_scan.sh` | end-to-end runner: frames -> COLMAP -> train -> mesh |
+| `scan/extract_frames.py` | scan videos -> COLMAP input images |
+| `scan/pick_cores.py` | idle-CPU-core picker (shared-server etiquette) |
+| `scan/postprocess_mesh.py` | align/scale/crop the mesh into an asset PLY |
+| `scan/setup/install_2dgs.sh` | conda env + CUDA_HOME submodule build + extra deps |
+| `convert.py` | **modified upstream** (exit-code fix, --max_num_features, mapper probe, mapper output check) |
 
 ```bash
 conda activate surfel_splatting
-cd ~/project/2d-gaussian-splatting
+cd <repo>/2d-gaussian-splatting
 
 # full pipeline for one video (put videos under data/raw/)
-GPU=5 bash gsrecon/run_recon.sh data/raw/desk.mp4
+GPU=5 bash scan/run_scan.sh data/raw/desk.mp4
 #   STAGE=3  restart from training      STAGE=4  redo the mesh only
 #   MESH=bounded DEPTH_TRUNC=... SDF_TRUNC=...   crop to the desk area
 #   LAMBDA_DIST / LAMBDA_NORMAL / DEPTH_RATIO / ITER / MESH_RES / SIFT_MAXF

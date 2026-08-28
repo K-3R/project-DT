@@ -8,6 +8,12 @@
 #
 # For inquiries contact  george.drettakis@inria.fr
 #
+# ======================================
+# File: convert.py
+# ======================================
+# Sanghyeok Park, SSL undergraduate
+# Edit 2026-08-28
+# ======================================
 # [ver] convert.py upstream + team-sr local patches r4 (2026-08-26)
 #   p1: os.system wait status 절단 수정 -- 모든 실패 경로 exit(1) 통일
 #       (wait status 는 코드<<8 이라 그대로 exit() 하면 하위 8비트=0
@@ -141,7 +147,9 @@ if not args.skip_matching:
     # 계속 진행되므로, 이번 실행이 실제로 모델을 새로 썼는지 검증한다.
     model_images = args.source_path + "/distorted/sparse/0/images.bin"
     if not os.path.exists(model_images):
-        logging.error("Mapper produced no model (missing sparse/0/images.bin). Exiting.")
+        logging.error(
+            "Mapper produced no model (missing sparse/0/images.bin). Exiting."
+        )
         exit(1)
     if os.path.getmtime(model_images) < mapper_t0 - 1.0:
         logging.error(

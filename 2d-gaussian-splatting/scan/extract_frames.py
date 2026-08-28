@@ -1,4 +1,10 @@
 #!/usr/bin/env python
+# ======================================
+# File: extract_frames.py
+# ======================================
+# Sanghyeok Park, SSL undergraduate
+# Edit 2026-08-28
+# ======================================
 # [ver] extract_frames.py 2026-08-20-r1  (ascii-only console/comments)
 """스캔 영상(mp4) -> COLMAP 입력 이미지 (2DGS 파이프라인 1단계).
 
@@ -13,17 +19,17 @@
                       없이 이어 붙인다 (v01_0001.jpg, v02_0001.jpg ...)
 
 사용
-    python gsrecon/extract_frames.py --src data/raw
-    python gsrecon/extract_frames.py --src <dir> --merge desk --target 300
-    python gsrecon/extract_frames.py --src <dir>/one.mp4          # 파일 하나만
+    python scan/extract_frames.py --src data/raw
+    python scan/extract_frames.py --src <dir> --merge desk --target 300
+    python scan/extract_frames.py --src <dir>/one.mp4          # 파일 하나만
 
 산출 구조 (2DGS convert.py 가 기대하는 형태)
     <out>/<scene>/input/0001.jpg ...
 
 다음 단계
     conda activate surfel_splatting
-    cd ~/project/2d-gaussian-splatting && python convert.py -s <out>/<scene>
-    (또는 gsrecon/run_recon.sh 가 이 스크립트를 1단계로 호출한다)
+    cd <레포>/2d-gaussian-splatting && python convert.py -s <out>/<scene>
+    (또는 scan/run_scan.sh 가 이 스크립트를 1단계로 호출한다)
 """
 
 import argparse
@@ -38,7 +44,7 @@ VIDEO_EXT = (".mp4", ".mov", ".m4v", ".avi", ".mkv")
 # 전 과정(raw 영상 -> 프레임 -> COLMAP -> 학습 -> 메시)을 이 레포 아래에
 # 둔다. data/ 와 output/ 은 .gitignore 되어 있어 저장소가 안 부푼다.
 #   data/raw/*.mp4  ->  data/<scene>/input/  ->  output/<scene>/...
-REPO_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))  # gsrecon/ 의 한 단계 위 = 레포 루트
+REPO_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))  # scan/ 의 한 단계 위 = 레포 루트
 DEFAULT_OUT = os.path.join(REPO_DIR, "data")
 
 

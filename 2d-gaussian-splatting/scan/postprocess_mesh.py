@@ -1,4 +1,10 @@
 #!/usr/bin/env python
+# ======================================
+# File: postprocess_mesh.py
+# ======================================
+# Sanghyeok Park, SSL undergraduate
+# Edit 2026-08-28
+# ======================================
 # [ver] postprocess_mesh.py 2026-08-26-r3  (ascii-only console/comments)
 # r3: 픽 1-3 퇴화(일직선/중복) 가드, cut-above 는 pick 모드에서 픽 1-3 만
 #     피팅 (픽 4 = 상판 기준점이라 섞으면 절단면이 기움) + 비공면 경고,
@@ -22,7 +28,7 @@ COLMAP 좌표계는 방향/크기/원점이 전부 임의라서, 메시를 그�
                          --scale 은 단위 보정용으로 계속 적용된다.
 
 레시피 1 -- RANSAC 자동 (첫 시도):
-    python gsrecon/postprocess_mesh.py --ply <fuse.ply> --out <out.ply>
+    python scan/postprocess_mesh.py --ply <fuse.ply> --out <out.ply>
     리포트의 평면 목록(extent 로 상판/껍질 판별)과 프리뷰를 보고
     --plane-idx / --flip 을 교정해 재실행한다 (수 분짜리라 싸다).
 

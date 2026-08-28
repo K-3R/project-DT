@@ -1,4 +1,10 @@
 #!/usr/bin/env python
+# ======================================
+# File: pick_cores.py
+# ======================================
+# Sanghyeok Park, SSL undergraduate
+# Edit 2026-08-28
+# ======================================
 # [ver] pick_cores.py 2026-08-20-r1  (ascii-only console/comments)
 """지금 가장 한가한 CPU 코어 N 개를 골라 taskset 형식으로 출력한다.
 
@@ -10,7 +16,7 @@
 무엇이든 실패하면 0..N-1 로 폴백하므로 실행은 항상 성립한다.
 
 stdout = 코어 목록만 (예: "12,20,33,41"), 진단은 stderr.
-사용: python pick_cores.py --n 8
+사용: python scan/pick_cores.py --n 8
 """
 
 import argparse
