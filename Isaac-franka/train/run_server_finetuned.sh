@@ -19,7 +19,9 @@ if [ -z "$SERVER_GPU" ]; then
 fi
 PORT="${PORT:-5555}"
 DENOISE="${DENOISE:-4}"
-GR00T_DIR="${GR00T_DIR:-$HOME/project/gr00t_Isaacsim/Isaac-GR00T}"
+# 레포 자기상대: train/ -> isaac_franka -> 클론 루트 (어느 클론에서든 동작)
+PROJ_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+GR00T_DIR="${GR00T_DIR:-$PROJ_ROOT/Isaac-GR00T}"
 CKPT="${CKPT:-/data1/huggingface/sslunder54/checkpoints/bimanual_full}"
 DCFG="${DCFG:-our_configs:BimanualFrankaConfig}"
 

@@ -24,12 +24,14 @@ if [ -z "$GPU" ]; then
     echo "[office-scan] ERROR: set GPU explicitly (shared server), e.g. GPU=1 ..."
     exit 1
 fi
-CONTAINER=gr00t_isaac
+CONTAINER="${CONTAINER:-gr00t_isaac}"
+# 레포 자기상대: 클론 루트 = 컨테이너의 /root/project 마운트 (OUT_CTN 과 동일 위치)
+PROJ_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
 GEN_DIR=/root/project/isaac_franka/envs/office_scan
 OUT_CTN=/root/project/datasets/office_scan_markers
-OUT_HOST="$HOME/project/gr00t_Isaacsim/datasets/office_scan_markers"
+OUT_HOST="$PROJ_ROOT/datasets/office_scan_markers"
 NAS=/data1/huggingface/sslunder54/datasets/office_scan_markers
-LOG_DIR="$HOME/project/gr00t_Isaacsim/out"
+LOG_DIR="$PROJ_ROOT/out"
 
 # 배치 정의: 태그:시드:개수범위:시도횟수 (office 와 동일 시드 = 분포 정합)
 BATCHES="${BATCHES:-m1:100:1,1:220 m2:200:2,2:230 m3:300:3,3:250}"

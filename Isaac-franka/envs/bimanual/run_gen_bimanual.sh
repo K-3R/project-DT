@@ -32,12 +32,14 @@ if [ -z "$GPU_A" ] || [ -z "$GPU_B" ]; then
     exit 1
 fi
 DEMOS="${DEMOS:-210}"
-CONTAINER=gr00t_isaac
+CONTAINER="${CONTAINER:-gr00t_isaac}"
+# 레포 자기상대: 클론 루트 = 컨테이너의 /root/project 마운트 (OUT_CTN 과 동일 위치)
+PROJ_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
 GEN_DIR=/root/project/isaac_franka/envs/bimanual
 OUT_CTN=/root/project/datasets/franka_bimanual
-OUT_HOST="$HOME/project/gr00t_Isaacsim/datasets/franka_bimanual"
+OUT_HOST="$PROJ_ROOT/datasets/franka_bimanual"
 NAS=/data1/huggingface/sslunder54/datasets/franka_bimanual
-LOG_DIR="$HOME/project/gr00t_Isaacsim/out"
+LOG_DIR="$PROJ_ROOT/out"
 
 # 레인 정의: 태그:시드:큐브개수 (시드는 배치마다 달라야 함)
 LANE_A="n2:100:2,2 n5:400:5,5"

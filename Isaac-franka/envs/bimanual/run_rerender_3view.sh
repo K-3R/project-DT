@@ -36,9 +36,12 @@ fi
 DEMOS="${DEMOS:-0}"          # 0 = 전체, 테스트는 2 등
 WRIST_FOV="${WRIST_FOV:-75}"
 NAS="${NAS:-/data1/huggingface/sslunder54/datasets/franka_bimanual}"
-HOME_DIR="${HOME_DIR:-$HOME/project/gr00t_Isaacsim/datasets/franka_bimanual}"
+# 레포 자기상대: HOME_DIR 은 CTN_DIR(/root/project/datasets/...)의 호스트측
+# 실체여야 한다 = 클론 루트/datasets (컨테이너 마운트와 동일 위치)
+PROJ_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
+HOME_DIR="${HOME_DIR:-$PROJ_ROOT/datasets/franka_bimanual}"
 CTN_DIR=/root/project/datasets/franka_bimanual
-LOG_DIR="$HOME/project/gr00t_Isaacsim/out"
+LOG_DIR="$PROJ_ROOT/out"
 CONTAINER="${CONTAINER:-gr00t_isaac}"
 BATCHES="${BATCHES:-0806_152305_n2 0806_152305_n3 0806_213259_n4 0806_182704_n5}"
 

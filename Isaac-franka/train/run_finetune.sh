@@ -33,7 +33,9 @@ if [ -z "$GPU" ]; then
     exit 1
 fi
 MODE="${MODE:-pipe}"
-REPO="${REPO:-$HOME/project/gr00t_Isaacsim/Isaac-GR00T}"
+# 레포 자기상대: train/ -> isaac_franka -> 클론 루트 (어느 클론에서든 동작)
+PROJ_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+REPO="${REPO:-$PROJ_ROOT/Isaac-GR00T}"
 DATASET="${DATASET:-/data1/huggingface/sslunder54/datasets/franka_bimanual_lerobot}"
 BASE="${BASE:-/data1/huggingface/sslunder54/checkpoints/n1.5-3b}"
 OUT="${OUT:-/data1/huggingface/sslunder54/checkpoints/bimanual_$MODE}"

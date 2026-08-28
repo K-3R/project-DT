@@ -1,14 +1,14 @@
 #!/usr/bin/env bash
-# [ver] run_evalauto_office_scan.sh 2026-08-28-r1
+# [ver] run_evalauto_office_scan.sh 2026-08-28-r2
+# r2: 경로 자기상대화 (OUT_ROOT/HOST_OUT = 클론 루트 기준) + 서버에
+#     GR00T_DIR 명시 전달 (옛 레포 기본값 발동 차단) + ckpt 예시 현행화
 # =============================================================================
 # office_scan 원샷 평가: 서버 자동 기동 -> eval -> 서버 자동 종료
-# (run_scripts/run_robocasa_baseline.sh 의 자동화 방식을 이 트랙에 이식)
 #
-# 사용 (호스트, gr00t_sh 활성화 상태에서):
-#   SERVER_GPU=5 CLIENT_GPU=4 \
-#   CKPT=/data1/huggingface/sslunder54/checkpoints/office_scan_3view \
-#     nohup bash run_evalauto_office_scan.sh \
-#     > ~/project/gr00t_Isaacsim/out/evalauto_office_scan.log 2>&1 &
+# 사용 (호스트, gr00t_sh 활성화 상태에서, 클론 루트 기준):
+#   SERVER_GPU=5 CLIENT_GPU=4 CKPT=<클론>/checkpoints/lab_office_sim \
+#     nohup bash isaac_franka/envs/office_scan/run_evalauto_office_scan.sh \
+#     > out/evalauto_office_scan.log 2>&1 &
 #
 # 노브: EPISODES_PER_N(기본 50 = 본평가), PORT(5561), VIDEO(0), DENOISE(4),
 #       OUT_DIR(컨테이너 경로; 기본 /root/project/out/eval_office_scan --
@@ -37,11 +37,14 @@ EPISODES_PER_N="${EPISODES_PER_N:-50}"
 VIDEO="${VIDEO:-0}"
 DENOISE="${DENOISE:-4}"
 CONTAINER="${CONTAINER:-gr00t_isaac}"
-OUT_ROOT="$HOME/project/gr00t_Isaacsim/out"
+# 레포 자기상대: 이 클론 루트가 곧 컨테이너의 /root/project 마운트다
+PROJ_ROOT="$(cd "$FRANKA_DIR/.." && pwd)"
+OUT_ROOT="${OUT_ROOT:-$PROJ_ROOT/out}"
+GR00T_DIR="${GR00T_DIR:-$PROJ_ROOT/Isaac-GR00T}"
 # 결과 위치 (컨테이너 경로 -- 기저 러너에 그대로 전달). 호스트에서는
-# /root/project -> ~/project/gr00t_Isaacsim 매핑으로 보인다
+# /root/project -> 클론 루트 매핑으로 보인다
 OUT_DIR="${OUT_DIR:-/root/project/out/eval_office_scan}"
-HOST_OUT="${OUT_DIR/#\/root\/project/$HOME/project/gr00t_Isaacsim}"
+HOST_OUT="${OUT_DIR/#\/root\/project/$PROJ_ROOT}"
 
 # 공용 서버 규약: GPU 반드시 명시. CKPT 도 명시 필수 (헤더 참조)
 if [ -z "$SERVER_GPU" ] || [ -z "$CLIENT_GPU" ]; then
@@ -50,7 +53,7 @@ if [ -z "$SERVER_GPU" ] || [ -z "$CLIENT_GPU" ]; then
 fi
 if [ -z "$CKPT" ]; then
     echo "[evalauto] ERROR: set CKPT explicitly, e.g."
-    echo "  CKPT=/data1/huggingface/sslunder54/checkpoints/office_scan_3view"
+    echo "  CKPT=$PROJ_ROOT/checkpoints/lab_office_sim"
     exit 1
 fi
 if [ ! -d "$CKPT" ]; then
@@ -78,7 +81,9 @@ echo "[evalauto] port=$PORT episodes_per_n=$EPISODES_PER_N video=$VIDEO"
 echo "[evalauto] server gpu=$SERVER_GPU client gpu=$CLIENT_GPU stamp=$STAMP"
 
 # ---- 서버 기동 (백그라운드; 파이프 없이 리다이렉트라 $! = 러너 bash) ----
+# GR00T_DIR 명시 전달: 서버 스크립트의 기본값에 기대지 않는다 (레포 이원화 방지)
 SERVER_GPU="$SERVER_GPU" PORT="$PORT" CKPT="$CKPT" DENOISE="$DENOISE" \
+    GR00T_DIR="$GR00T_DIR" \
     bash "$FRANKA_DIR/train/run_server_finetuned.sh" > "$SERVER_LOG" 2>&1 &
 SERVER_PID=$!
 
