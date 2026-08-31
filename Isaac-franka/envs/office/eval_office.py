@@ -46,11 +46,12 @@ import os
 import sys
 import traceback
 
-# ================================================================== 1. 인자
+# 1. arguments (argparse) ------------------------------------------------
 parser = argparse.ArgumentParser(
     description="closed-loop success-rate eval for office marker task"
 )
 
+# argument groups (argparse)
 g = parser.add_argument_group("eval")
 g.add_argument(
     "--episodes-per-n", type=int, default=10, help="episodes per marker count"
@@ -74,35 +75,81 @@ g.add_argument(
     default=16,
     help="actions executed per inference (<= model horizon 16)",
 )
-g.add_argument("--host", default="localhost")
-g.add_argument("--port", type=int, default=5555)
+g.add_argument(
+    "--host",
+    default="localhost",
+)
+g.add_argument(
+    "--port",
+    type=int,
+    default=5555,
+)
 g.add_argument(
     "--instruction",
     default="",
     help="fixed instruction override; empty = per-count auto "
     "('put N marker(s) into the pencil holder', must match the converter)",
 )
-g.add_argument("--seed", type=int, default=1000, help="eval seed (train used 100-300)")
+g.add_argument(
+    "--seed",
+    type=int,
+    default=1000,
+    help="eval seed (train used 100-300)",
+)
 g.add_argument(
     "--dry-run",
     action="store_true",
     help="print payload shapes after one reset and exit (no server needed)",
 )
 
+# argument groups (argparse)
 g = parser.add_argument_group("output")
-g.add_argument("--out-dir", default="", help="dir for episodes.csv + summary.json")
-g.add_argument("--video-dir", default="", help="per-episode mp4 dir (empty = off)")
-g.add_argument("--stamp", type=int, default=1, help="append KST timestamp to outputs")
-g.add_argument("--tag", default="", help="suffix after the timestamp")
+g.add_argument(
+    "--out-dir",
+    default="",
+    help="dir for episodes.csv + summary.json",
+)
+g.add_argument(
+    "--video-dir",
+    default="",
+    help="per-episode mp4 dir (empty = off)",
+)
+g.add_argument(
+    "--stamp",
+    type=int,
+    default=1,
+    help="append KST timestamp to outputs",
+)
+g.add_argument(
+    "--tag",
+    default="",
+    help="suffix after the timestamp",
+)
 
 # 마커 random 배치 knob: 생성기와 같은 기본값 = 같은 초기상태 분포
+# argument groups (argparse)
 g = parser.add_argument_group("randomization (must match the generator)")
-g.add_argument("--region", default="0.06,0.26,-0.26,0.38")
-g.add_argument("--min-sep", type=float, default=0.11)
-g.add_argument("--rand-tries", type=int, default=400)
-g.add_argument("--tool-offset", type=float, default=0.1034)
+g.add_argument(
+    "--region",
+    default="0.06,0.26,-0.26,0.38",
+)
+g.add_argument(
+    "--min-sep",
+    type=float,
+    default=0.11,
+)
+g.add_argument(
+    "--rand-tries",
+    type=int,
+    default=400,
+)
+g.add_argument(
+    "--tool-offset",
+    type=float,
+    default=0.1034,
+)
 
-# ================================================================== 2. app 기동
+# 2. IsaacLab 시작 ---------------------------------------------------------
 from isaaclab.app import AppLauncher  # noqa: E402
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -154,7 +201,7 @@ from isaaclab.utils.math import (  # noqa: E402
     subtract_frame_transforms,
 )
 
-# ================================================================== 3. 수학
+# 3. 수학 (자세/판정 유틸) -------------------------------------------------------
 # 생성기(gen_office.py)와 동일한 규약. 생성기는 script 라
 # import 할 수 없어 필요한 최소만 복사함 (변경 시 양쪽 동기화 필요).
 GRIP_OPEN, GRIP_CLOSE = 0.04, 0.0
@@ -225,7 +272,7 @@ def save_video(frames, path, fps):
         print(f"[vid] mp4 save failed: {path} ({e})")
 
 
-# ================================================================== 4. 배치
+# 4. 배치/reset (생성기와 동일 규약) -----------------------------------------------
 # 생성기와 동일한 마커 배치 sampler (초기상태 분포 일치)
 def forbidden_rects(a):
     hx, hy = vec(a.holder_xy)
@@ -308,7 +355,7 @@ def reset_episode(scene, sim, rng, a, n, dt):
         scene.update(dt)
 
 
-# ================================================================== 5. 팔 실행기
+# 5. 팔 실행기 (policy action 을 IK 로 실행) -------------------------------------
 class ArmExec:
     """정책이 준 world TCP 목표를 IK 로 실행하는 축소판 Arm (상태기계 없음).
 
@@ -399,7 +446,7 @@ class ArmExec:
         self.robot.set_joint_position_target(g, joint_ids=self.finger_ids)
 
 
-# ================================================================== 6. 관측/action
+# 6. 관측/action (server 와의 payload 계약) ------------------------------------
 def build_payload(scene, cams, text):
     """학습 데이터(modality.json)와 정확히 같은 key/차원의 관측.
 
@@ -481,7 +528,7 @@ def write_results(out_dir, a, rows):
         )
 
 
-# ================================================================== 7. main
+# 7. main (episode 반복 + 채점) ----------------------------------------------
 def main():
     torch.manual_seed(args.seed)
     rng = np.random.default_rng(args.seed)
@@ -552,9 +599,7 @@ def main():
                 ctrl += 1
                 if args.video_dir:
                     # 확인용 영상은 model 이 실제로 본 3 view 를 가로로 붙여 저장
-                    frames.append(
-                        np.concatenate([grab_rgb(c) for c in cams], axis=1)
-                    )
+                    frames.append(np.concatenate([grab_rgb(c) for c in cams], axis=1))
                 if ctrl >= limit:
                     break
 
