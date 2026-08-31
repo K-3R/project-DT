@@ -5,7 +5,7 @@
 # Edit 2026-08-31
 # ======================================
 # [ver] convert_bimanual_lerobot.py 2026-08-31
-r"""양팔 Franka 씨앗 HDF5 -> GR00T-LeRobot dataset 변환기.
+r"""양팔 Franka HDF5 dataset -> GR00T-LeRobot dataset 변환기.
 
 NVIDIA IsaacLabEvalTasks 의 convert_hdf5_to_lerobot.py (Apache-2.0) 를
 우리 데이터 전용으로 이식한 자립형 script. 원본 대비 변경점:

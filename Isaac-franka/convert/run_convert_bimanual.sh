@@ -7,7 +7,7 @@
 # ======================================
 # [ver] run_convert_bimanual.sh 2026-08-31
 # =============================================================================
-# 씨앗 HDF5 4벌 -> LeRobot dataset 1개 변환 (host gr00t 환경에서 실행)
+# Franka HDF5 dataset 4벌 -> LeRobot dataset 1개 변환 (host gr00t 환경에서 실행)
 #
 # 입력: NAS 의 batch 폴더들 (<IN>/*/seed_3view.hdf5, n2/n3/n4/n5)
 # 출력: home 의 LeRobot dataset 폴더 (학습이 읽는 위치, 총 ~200MB 수준)

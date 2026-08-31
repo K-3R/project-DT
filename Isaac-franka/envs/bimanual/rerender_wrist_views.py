@@ -7,7 +7,7 @@
 # ======================================
 # [ver] rerender_wrist_views.py 2026-08-11-r1  (ascii-only console/comments)
 r"""
-기존 씨앗 HDF5 에 손목 카메라 2뷰를 추가하는 rerender 도구 (3뷰 전환용).
+기존 HDF5 dataset 에 손목 카메라 2뷰를 추가하는 rerender 도구 (3뷰 전환용).
 
 궤적 재생성 없음. HDF5 에 기록된 매 frame 의 관절 18개와
 cube 상태를 그대로 설정(teleport)하고 손목 카메라 2대만 새로 render 함.

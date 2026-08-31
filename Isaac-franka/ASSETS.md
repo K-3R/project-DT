@@ -1,8 +1,13 @@
-# 스캔 자산 대장 (datasets/)
+# 스캔 자산 대장
 
 자산의 계보 (take -> 메시 -> 후처리 -> USD -> 소비처)를 기록한다.
 새 자산 추가 시 여기에 한 행 + postprocess 사이드카 json (자동 생성)이
 정본 근거다. **스케일은 재구성마다 임의**이므로 자산 교체 = 재캘리브레이션.
+
+소재: `take6_desk_hq.usd`(+.ply, 사이드카 json) = repo 의
+`envs/office_scan/assets/` (git 추적 -- 이것이 정본. scene 기본값이 이
+경로를 읽는다). `take6_desk_final.usd`(예비판)와 `replica/` 자산은 repo
+미포함 -- 서버 작업트리의 `datasets/` (gitignore) 에만 있다.
 
 ## 현행 (프로토콜 office-scan-v1)
 
