@@ -17,7 +17,7 @@
 # 실행:
 #   검증(소량):  GPU=1 DEMOS_OVERRIDE=3 bash run_gen_office_scan.sh
 #   본 실행:     GPU=1 nohup bash run_gen_office_scan.sh \
-#                  > ~/project/gr00t_Isaacsim/out/gen_office_scan_master.log 2>&1 &
+#                  > <project root>/out/gen_office_scan_master.log 2>&1 &
 #
 # 중단:
 #   pkill -f run_gen_office_scan.sh
