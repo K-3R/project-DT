@@ -17,23 +17,24 @@ office(env2) 마커 태스크를 그대로 두고 **배경만 실제 연구실 �
 ## 파일 구성
 
 ```
-office_scan_scene.py   scene 모듈: [A] office_scene 엔진 사본(무수정) +
-                          [B] scan 오버라이드(책상 시각만 scan USD 교체).
-                          프로토콜 확정 상수의 정본 ([B] 블록)
+office_scan_scene.py   scene 모듈: env4 세계 정의 전부 (office 엔진에
+                          scan 델타를 인라인한 단일 정의).
+                          protocol 확정 상수의 정본 (상단 블록)
 preview_office_scan.py        미리보기 (preview_office 사본, scene 만 교체)
 eval_office_scan.py           폐루프 평가 (eval_office 사본, scene 만 교체)
 gen_office_scan.py            데모 생성 (gen_office 사본, scene 만 교체)
-run_evalauto_office_scan.sh   원샷 평가 runner (server 자동 기동/종료)
-run_eval_office_scan.sh       평가 runner (host 에서 실행)
+run_eval_office_scan.sh       원샷 평가 runner (server 자동 기동/종료.
+                          DRY_RUN / EXTERNAL_SERVER mode 는 헤더 참조)
 run_gen_office_scan.sh        생성 runner (Track B: office 와 동일 seed/batch,
                           산출은 datasets/office_scan_markers 로 분리)
 assets/                       scan 자산 (take6_desk_hq.usd + .ply + json)
 ```
 
-동작 원리: env 격리 -- office 의 scene/entry 를 물리 사본으로 들여와
-scan 델타만 오버라이드함 (구판은 sys.modules 오버레이였으나 08-31 격리).
-task/로봇/카메라/성공 판정은 env2 와 완전히 동일함. office 원본이
-갱신되면 사본([A] 절 + entry 3종) 재복사가 필요함.
+동작 원리: env 격리 -- scene/entry 전부 자기 파일로 실행됨.
+scene 은 office 엔진에 scan 델타를 인라인한 한 벌의 정의이고, env2 대비
+델타 목록은 scene 헤더 docstring 에 있음. task/로봇/카메라/성공 판정은
+env2 와 완전히 동일함.
+(구판 계보: sys.modules 오버레이 -> 08-31 사본 격리 -> 08-31 인라인)
 
 ## 프로토콜 v1 확정값
 
@@ -69,19 +70,15 @@ docker exec -u 0 -e TERM=xterm -e PYTHONUNBUFFERED=1 gr00t_isaac bash -lc \
    --out /root/project/out/office_scan_preview"
 ```
 
-평가 (호스트에서. 서버 먼저, office 체크포인트 그대로):
+평가 (호스트에서. 원샷 -- server 자동 기동/종료):
 
 ```bash
-SERVER_GPU=<GPU> PORT=5561 CKPT=/data1/huggingface/sslunder54/checkpoints/office_3view \
-  bash ~/project/gr00t_Isaacsim/isaac_franka/train/run_server_finetuned.sh
+DRY_RUN=1 CLIENT_GPU=<GPU> bash run_eval_office_scan.sh    # 관측 규약 사전점검
+SERVER_GPU=<GPU> CLIENT_GPU=<GPU> EPISODES_PER_N=50 \
+  CKPT=<클론루트>/checkpoints/lab_office_sim bash run_eval_office_scan.sh
 ```
 
-```bash
-DRY_RUN=1 bash run_eval_office_scan.sh                      # 관측 규약 사전점검
-CLIENT_GPU=<GPU> EPISODES_PER_N=10 VIDEO=1 PORT=5561 bash run_eval_office_scan.sh
-```
-
-산출물: `~/project/gr00t_Isaacsim/out/eval_office_scan/<KST스탬프>/`
+산출물: `<클론루트>/out/eval_office_scan/<KST스탬프>/`
 (summary.json + 에피소드 비디오). env2 의 `out/eval_office/` 결과와
 나란히 놓는 것이 보고 포맷이다.
 
@@ -100,10 +97,8 @@ CLIENT_GPU=<GPU> EPISODES_PER_N=10 VIDEO=1 PORT=5561 bash run_eval_office_scan.s
 
 ## 알려진 제약
 
-- office 의 cfg 부품 이름 규약(`desk_top_*`, `stand_*_main` 등)에
-  의존한다. 이름이 갈리면 build 가 경고를 찍는다
-- entry/scene 은 office 의 격리 사본이라 office 쪽 수정이 자동 반영되지
-  않는다 -- 원본 갱신 시 사본 재복사 (각 파일 [ver] 의 계보 참조)
+- scene/entry 는 office 와 독립이라 office 쪽 수정이 자동 반영되지
+  않는다 -- 의도적으로 가져올 때만 반영 (각 파일 [ver] 의 계보 참조)
 - Track B 절차: `run_gen_office_scan.sh` (수율 검증은 DEMOS_OVERRIDE=3 먼저)
   -> convert 의 office 변환기를 NAS office_scan_markers 로 돌리고
   -> train/run_finetune.sh 파인튜닝 -> 새 ckpt 로 `run_eval_office_scan.sh` 재평가

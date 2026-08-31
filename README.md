@@ -93,9 +93,9 @@ BATCHES="m2:200:2,2:230" GPU=<n> bash Isaac-franka/envs/office_scan/run_gen_offi
 GPU=<n> MODE=full DATASET=<lerobot 데이터셋> OUT=<새 ckpt 경로> \
   bash Isaac-franka/train/run_finetune.sh
 
-# [6] 평가: 서버 자동 기동/종료 원샷, N별 50회
-SERVER_GPU=<n> CLIENT_GPU=<n> CKPT=<클론>/checkpoints/lab_office_sim \
-  bash Isaac-franka/envs/office_scan/run_evalauto_office_scan.sh
+# [6] 평가: 서버 자동 기동/종료 원샷, N별 50회 (EPISODES_PER_N=50 = 본평가)
+SERVER_GPU=<n> CLIENT_GPU=<n> EPISODES_PER_N=50 CKPT=<클론>/checkpoints/lab_office_sim \
+  bash Isaac-franka/envs/office_scan/run_eval_office_scan.sh
 ```
 
 ## 재현 앵커
