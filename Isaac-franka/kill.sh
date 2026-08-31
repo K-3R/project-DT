@@ -30,8 +30,7 @@ if [ "$MODE" = "all" ]; then
   PATTERNS=("isaac-sim" "kit" "python.sh" "isaaclab.sh")
 else
   # AppLauncher 진입점들 (archive 포함. extract_props 등 일회성 도구는
-  # all mode fallback 으로 잡음. office_scan 은 overlay wrapper 이름이
-  # cmdline 에 뜨므로 자기 이름이 필요함)
+  # all mode fallback 으로 잡음)
   PATTERNS=("dual_franka_scene.py" "gen_bimanual.py"
             "eval_bimanual.py" "eval_office.py"
             "gen_office.py" "preview_office.py" "preview_replica.py"

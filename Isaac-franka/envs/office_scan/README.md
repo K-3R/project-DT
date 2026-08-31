@@ -17,22 +17,23 @@ office(env2) 마커 태스크를 그대로 두고 **배경만 실제 연구실 �
 ## 파일 구성
 
 ```
-office_scan_scene.py   씬 모듈: office_scene 을 엔진으로 쓰고
-                          (무수정) 책상 시각만 스캔 USD 로 교체.
-                          ★프로토콜 확정 상수의 정본 (상단 블록)
-_overlay.py               office 스크립트를 씬만 바꿔 실행하는 관용구
-preview_office_scan.py        미리보기 (preview_office 재사용)
-eval_office_scan.py           폐루프 평가 (eval_office 재사용)
-gen_office_scan.py            씨앗 데모 생성 (gen_office 재사용)
-run_eval_office_scan.sh       평가 러너 (호스트에서 실행)
-run_gen_office_scan.sh        생성 러너 (Track B: office 와 동일 시드/배치,
+office_scan_scene.py   scene 모듈: [A] office_scene 엔진 사본(무수정) +
+                          [B] scan 오버라이드(책상 시각만 scan USD 교체).
+                          프로토콜 확정 상수의 정본 ([B] 블록)
+preview_office_scan.py        미리보기 (preview_office 사본, scene 만 교체)
+eval_office_scan.py           폐루프 평가 (eval_office 사본, scene 만 교체)
+gen_office_scan.py            데모 생성 (gen_office 사본, scene 만 교체)
+run_evalauto_office_scan.sh   원샷 평가 runner (server 자동 기동/종료)
+run_eval_office_scan.sh       평가 runner (host 에서 실행)
+run_gen_office_scan.sh        생성 runner (Track B: office 와 동일 seed/batch,
                           산출은 datasets/office_scan_markers 로 분리)
+assets/                       scan 자산 (take6_desk_hq.usd + .ply + json)
 ```
 
-동작 원리: `sys.modules["office_scene"]` 을 이 씬 모듈로 바꿔치기한 뒤
-office 의 preview/eval 스크립트를 그대로 실행한다 (`_overlay.py` 참조).
-office 코드는 한 글자도 수정하지 않으며, 태스크/로봇/카메라/성공 판정은
-env2 와 완전히 동일하다.
+동작 원리: env 격리 -- office 의 scene/entry 를 물리 사본으로 들여와
+scan 델타만 오버라이드함 (구판은 sys.modules 오버레이였으나 08-31 격리).
+task/로봇/카메라/성공 판정은 env2 와 완전히 동일함. office 원본이
+갱신되면 사본([A] 절 + entry 3종) 재복사가 필요함.
 
 ## 프로토콜 v1 확정값
 
@@ -100,9 +101,9 @@ CLIENT_GPU=<GPU> EPISODES_PER_N=10 VIDEO=1 PORT=5561 bash run_eval_office_scan.s
 ## 알려진 제약
 
 - office 의 cfg 부품 이름 규약(`desk_top_*`, `stand_*_main` 등)에
-  의존한다. office 가 이름을 바꾸면 build 가 경고를 찍는다
-- `_overlay.run_office_script()` 뒤의 코드는 실행되지 않을 수 있다
-  (office 스크립트의 os._exit) -- 러너의 마지막 문장으로만 쓸 것
+  의존한다. 이름이 갈리면 build 가 경고를 찍는다
+- entry/scene 은 office 의 격리 사본이라 office 쪽 수정이 자동 반영되지
+  않는다 -- 원본 갱신 시 사본 재복사 (각 파일 [ver] 의 계보 참조)
 - Track B 절차: `run_gen_office_scan.sh` (수율 검증은 DEMOS_OVERRIDE=3 먼저)
   -> convert 의 office 변환기를 NAS office_scan_markers 로 돌리고
   -> train/run_finetune.sh 파인튜닝 -> 새 ckpt 로 `run_eval_office_scan.sh` 재평가
