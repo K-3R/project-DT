@@ -1,21 +1,21 @@
-# bimanual - 양팔 Franka 벤치마크
+# bimanual - dual-arm Franka benchmark
 
-Isaac Lab 위에 Franka 2대로 만든 양팔 워크셀과, 그 위에서 도는 태스크의
-정답(씨앗) 궤적 생성기.
+A bimanual workcell built on Isaac Lab with two Frankas, plus the generator
+that produces ground-truth (seed) trajectories for the task running on it.
 
 ```
-bimanual_scene.py         씬 정의       - 로봇 2대 ,  테이블 ,  큐브
-gen_bimanual.py   궤적 생성기   - 태스크 상태기계 + 기록
-PRESETS.md                확정 프리셋   - 배치 수치와 그 근거
-archive/                  역할이 끝난 것 - 배치 결정에 쓴 검증 스크립트
+bimanual_scene.py         scene definition     - 2 robots, table, cubes
+gen_bimanual.py   trajectory generator - task state machine + recording
+PRESETS.md                confirmed presets    - placement numbers and their rationale
+archive/                  retired              - validation scripts used for placement decisions
 ```
 
-두 파일이면 된다. 씬은 태스크와 독립이라, 다른 태스크를 만들 때
-`bimanual_scene.py` 는 그대로 두고 생성기만 새로 쓰면 된다.
+Two files are all it takes. The scene is task-independent: to build a
+different task, keep `bimanual_scene.py` as is and only write a new generator.
 
 ---
 
-## 실행
+## Run
 
 ```bash
 docker exec -u 0 -e TERM=xterm -e PYTHONUNBUFFERED=1 gr00t_isaac bash -lc \
@@ -26,114 +26,118 @@ CUDA_VISIBLE_DEVICES=2 /root/project/IsaacLab/isaaclab.sh -p gen_bimanual.py \
   --video-dir /root/project/out/sm"
 ```
 
-산출물은 실행 시각으로 폴더가 갈려 덮이지 않는다.
+Outputs go into per-run timestamped folders, so nothing gets overwritten.
 
 ```
-datasets/franka_bimanual/0805_143012/seed.hdf5      성공한 궤적만
-                                     run_meta.json  그때 쓴 노브 전부
+datasets/franka_bimanual/0805_143012/seed.hdf5      successful trajectories only
+                                     run_meta.json  every knob used for that run
 out/sm/0805_143012/ep000_n4_success.mp4
 ```
 
-빠르게 확인만 할 때는 `--demos 1 --randomize 0` 에 영상을 끄면 1~2분이면 끝난다.
+For a quick check, `--demos 1 --randomize 0` with video off finishes in 1-2 minutes.
 
 ---
 
-## 태스크
+## Task
 
 ```
-cube_1        탑의 바닥. 그대로 둔다
-나머지 N-1개   베이스가 가까운 팔이 집어 순서대로 그 위에 쌓는다
-N             --num-cubes 범위에서 에피소드마다 무작위 (기본 2~6)
+cube_1          base of the tower. left as is
+other N-1       the arm whose base is closer picks each one and stacks it on top, in order
+N               randomized per episode within the --num-cubes range (default 2~6)
 ```
 
-집기는 두 팔이 **동시에** 한다 - 담당 큐브가 서로 반대편이라 동선이 안 겹친다.
-쌓는 자리는 하나뿐이라 놓기만 한 번에 한 팔씩, `Stack` 이 lock 으로 조율한다.
+Both arms pick **simultaneously** -- their assigned cubes are on opposite sides,
+so paths do not overlap. There is only one stacking spot, so placing happens one
+arm at a time; `Stack` coordinates this with a lock.
 
-성공 판정: 모든 큐브의 xy 가 3.5cm 이내로 모이고 z 가 2cm 이상씩 층을 이룰 것.
-성공한 에피소드만 HDF5 에 저장된다.
+Success criterion: all cube xy positions gather within 3.5cm and z forms layers
+of at least 2cm each. Only successful episodes are saved to HDF5.
 
 ---
 
-## 상태 흐름 (한 큐브당)
+## State flow (per cube)
 
 ```
 REST -> ABOVE_PICK -> AT_PICK -> CLOSE -> LIFT -> HOLD
-     -> ABOVE_PLACE -> AT_PLACE -> OPEN -> UP -> RETREAT -> (다음 큐브 | FINISHED)
+     -> ABOVE_PLACE -> AT_PLACE -> OPEN -> UP -> RETREAT -> (next cube | FINISHED)
 ```
 
-| 상태 | 하는 일 | 왜 필요한가 |
+| State | What it does | Why it is needed |
 | --- | --- | --- |
-| `HOLD` | 쥔 채 자기 쪽 바깥에서 대기 | 두 팔이 가운데서 손목이 부딪힌다 |
-| `UP` | 놓은 직후 **수직으로만** 이탈 | 바로 옆으로 가면 방금 쌓은 탑을 스친다 |
-| `RETREAT` | 자기 쪽 바깥으로 물러나며 lock 해제 | 탑 바로 위에서 멈추면 다음 팔의 진입로를 막는다 |
+| `HOLD` | wait outside on its own side while holding | the two arms collide at the wrists in the middle |
+| `UP` | leave **vertically only** right after placing | moving sideways immediately grazes the tower just stacked |
+| `RETREAT` | back off to its own side and release the lock | stopping right above the tower blocks the next arm's approach |
 
 ---
 
-## 설계에서 중요한 네 가지
+## Four points that matter in the design
 
-**(1) 툴 오프셋** - IK 가 제어하는 것은 `panda_hand` 원점이고 실제 파지점(TCP)은
-거기서 손 +z 로 `--tool-offset`(0.1034m) 나간 지점이다. 목표를 그만큼 뒤로
-물리지 않으면 손이 테이블에 파고든다.
+**(1) Tool offset** -- what IK controls is the `panda_hand` origin; the actual
+grasp point (TCP) is `--tool-offset` (0.1034m) further along the hand +z. Unless
+the target is pulled back by that amount, the hand digs into the table.
 
-**(2) 파지 지점 고정** - 파지 목표는 `REST` 에서 한 번만 계산한다. 매 스텝
-큐브를 다시 읽으면, 쥔 뒤에는 큐브가 손을 따라오므로 목표가 손과 함께 도망가
-`LIFT` 에서 영원히 도달하지 못한다.
+**(2) Grasp point frozen** -- the grasp target is computed only once in `REST`.
+If the cube is re-read every step, then after grasping the cube follows the
+hand, so the target runs away with the hand and `LIFT` never converges.
 
-**(3) 실측 기반 높이** - 놓는 높이를 "바닥 + 층수x4cm" 로 가정하지 않는다.
-파지 순간 `TCP - 큐브중심` 간격을 재고(`hold_off`), 놓을 때는 `Stack.top_z()` 로
-현재 탑의 실제 높이를 읽는다. 층이 쌓이며 생기는 오차가 누적되지 않는다.
+**(3) Measured heights** -- the place height is not assumed as "floor + layer
+x 4cm". Measure the `TCP - cube center` gap at grasp time (`hold_off`), and read
+the tower's actual current height via `Stack.top_z()` when placing. Errors that
+arise as layers stack up do not accumulate.
 
-**(4) 명령 없는 구간 금지** - `DifferentialIKController` 는 `set_command` 없이
-`compute` 하면 목표가 0 으로 잡혀 팔이 루트 원점으로 끌려간다. 대기 구간에서는
-반드시 `hold_here()` 로 현재 자세를 목표로 잡아야 한다.
+**(4) No command-less intervals** -- calling `compute` on
+`DifferentialIKController` without `set_command` takes the target as 0 and drags
+the arm toward the root origin. During wait intervals, `hold_here()` must set
+the current pose as the target.
 
 ---
 
-## 주요 노브
+## Key knobs
 
-| 노브 | 기본 | 증상 -> 조치 |
+| Knob | Default | Symptom -> action |
 | --- | --- | --- |
-| `--num-cubes` | `2,6` | 개수 범위 |
-| `--region` | `0.36,0.60,-0.26,0.26` | 큐브를 뿌릴 구역. 샘플링 실패가 잦으면 넓힌다 |
-| `--min-sep` / `--base-clear` | `0.11` / `0.13` | 큐브 간 / 탑과의 최소 거리. 옆 큐브를 건드리면 키운다 |
-| `--yaw-range` | `45` | 큐브 회전 폭. 파지 실패가 잦으면 줄인다 |
-| `--place-clear` | `0.005` | 탑 꼭대기에서 띄우는 여유. 누르면 키운다 |
-| `--pos-tol` / `--dwell` | `0.006` / `25` | 도달 판정. 전이가 안 되면 완화, 불안정하면 강화 |
-| `--state-timeout` | `250` | 접촉으로 막혔을 때의 강제 진행. `[!]` 로그로 보인다 |
-| `--max-steps` | `1400` | **큐브 1개당** 상한 (실제 상한 = 이 값 x 쌓을 개수) |
+| `--num-cubes` | `2,6` | count range |
+| `--region` | `0.36,0.60,-0.26,0.26` | region where cubes are scattered. Widen if sampling fails often |
+| `--min-sep` / `--base-clear` | `0.11` / `0.13` | min distance between cubes / to the tower. Increase if neighboring cubes get bumped |
+| `--yaw-range` | `45` | cube rotation span. Reduce if grasps fail often |
+| `--place-clear` | `0.005` | clearance above the tower top. Increase if it presses down |
+| `--pos-tol` / `--dwell` | `0.006` / `25` | arrival check. Relax if transitions stall, tighten if unstable |
+| `--state-timeout` | `250` | forced advance when blocked by contact. Visible as `[!]` in the log |
+| `--max-steps` | `1400` | cap **per cube** (actual cap = this value x number of cubes to stack) |
 
-씬 쪽 노브는 `PRESETS.md` 참조. 확정값은 `--table dual --mirror-side right
---base-sep 0.9` 이다.
+For scene-side knobs see `PRESETS.md`. Confirmed values: `--table dual
+--mirror-side right --base-sep 0.9`.
 
 ---
 
-## 기록 형식
+## Recording format
 
 ```
 data/demo_i/
   actions   (T,16)  [Lpos3 Lquat4 Lgrip1 | Rpos3 Rquat4 Rgrip1]
-                    월드 프레임 절대 TCP 목표 (IK-Abs 계열)
+                    absolute TCP targets in world frame (IK-Abs family)
   obs/      joint_pos(T,18)  eef_pos_l/r  eef_quat_l/r  grip_l/r
             cube_pos(T,3N)   cube_quat(T,4N)
-  subtask/  place_done (T,)  한 큐브를 쌓아 올릴 때마다 1 증가하는 누적값
+  subtask/  place_done (T,)  cumulative count, +1 each time a cube is stacked
 ```
 
-`subtask/place_done` 은 나중에 Isaac Lab Mimic 의 어노테이션 경계로 쓰기 위한
-것이다. 상태기계는 그 시점을 정확히 알고 있으므로 사람이 다시 찍을 필요가 없다.
+`subtask/place_done` exists to later serve as annotation boundaries for
+Isaac Lab Mimic. The state machine knows those moments exactly, so no human
+re-annotation is needed.
 
-액션을 **절대 자세(IK-Abs)** 로 기록한 이유는, Isaac Lab 의 공식 상태기계 예제와
-GR1T2 Mimic 환경이 모두 Abs 이고, IK-Rel 로 만든 궤적이 Mimic 에서 막힌 보고
-([Discussion #4006](https://github.com/isaac-sim/IsaacLab/discussions/4006))가
-있기 때문이다.
+Actions are recorded as **absolute poses (IK-Abs)** because Isaac Lab's official
+state-machine examples and the GR1T2 Mimic env are both Abs, and there is a
+report of IK-Rel-made trajectories getting stuck in Mimic
+([Discussion #4006](https://github.com/isaac-sim/IsaacLab/discussions/4006)).
 
 ---
 
-## 실행 함정
+## Runtime pitfalls
 
-상위 폴더 `../../README.md` 의 표 참조. 요약하면:
+See the table in the parent folder's `../../README.md`. In short:
 
 ```
--e TERM=xterm            없으면 로그인 셸 초기화가 죽는다
--e PYTHONUNBUFFERED=1    없으면 우리 print 가 끝날 때까지 안 보인다
-umask 000 &&             없으면 산출물이 root 소유라 호스트에서 못 지운다
+-e TERM=xterm            without it, login shell init dies
+-e PYTHONUNBUFFERED=1    without it, our prints stay invisible until the end
+umask 000 &&             without it, outputs are root-owned and cannot be deleted from the host
 ```

@@ -1,14 +1,15 @@
-# 양팔 Franka 환경 - 확정 프리셋 (2026-08-05)
+# Bimanual Franka environment - confirmed presets (2026-08-05)
 
-Isaac Lab 2.2.1 에는 양팔 로봇 에셋이 없다 (양팔은 GR1T2 휴머노이드뿐).
-**Franka 2대를 한 씬에 놓아 양팔 워크셀을 만든다** - robosuite 의 TwoArm 환경이
-Panda 2대로 하는 것과 같은 구성.
+Isaac Lab 2.2.1 has no bimanual robot asset (the only dual-arm option is the
+GR1T2 humanoid). **Two Frankas are placed in one scene to form a bimanual
+workcell** -- the same setup robosuite's TwoArm envs use with two Pandas.
 
-두 프리셋 A / C 를 환경 기준선으로 확정. 이 위에서 씨앗 궤적을 만들고 태스크를 수행한다.
+Presets A / C are confirmed as the environment baselines. Seed trajectories are
+built and tasks are run on top of them.
 
 ---
 
-## 프리셋 A - Isaac 테이블 2장
+## Preset A - two Isaac tables
 
 ```bash
 docker exec -u 0 -e TERM=xterm -e PYTHONUNBUFFERED=1 gr00t_isaac bash -lc \
@@ -21,15 +22,15 @@ CUDA_VISIBLE_DEVICES=2 /root/project/IsaacLab/isaaclab.sh -p archive/dual_franka
   --shot /root/project/out/A/view.png --diagram /root/project/out/A/layout.png"
 ```
 
-실측 결과
+Measured results
 
 ```
 TableL  x[-0.315,+1.104] 1.419m   y[-0.750,+0.910] 1.660m
 TableR  x[-0.315,+1.104] 1.419m   y[-0.910,+0.750] 1.660m
-합친 면 y[-0.910,+0.910]  중심 0  (대칭, 겹침)
+combined surface y[-0.910,+0.910]  center 0  (symmetric, overlapping)
 ```
 
-## 프리셋 C - 절차적 테이블
+## Preset C - procedural table
 
 ```bash
 docker exec -u 0 -e TERM=xterm -e PYTHONUNBUFFERED=1 gr00t_isaac bash -lc \
@@ -41,63 +42,69 @@ CUDA_VISIBLE_DEVICES=2 /root/project/IsaacLab/isaaclab.sh -p archive/dual_franka
   --shot /root/project/out/C/view.png --diagram /root/project/out/C/layout.png"
 ```
 
-원점이 곧 상판 중심이라 반전, 마운트판 문제가 구조적으로 없다. 크기를 태스크에
-맞춰 자유롭게 정할 수 있어 **새 벤치마크의 기본형으로 적합**.
+The origin is the tabletop center itself, so the mirroring and mount-plate
+problems structurally do not exist. Size can be chosen freely to fit the task,
+making it **the right default for new benchmarks**.
 
 ---
 
-## 두 프리셋 공통 (로봇, 물체, 작업공간)
+## Common to both presets (robots, objects, workspace)
 
 ```
-로봇        FRANKA_PANDA_HIGH_PD_CFG x2   dof=9, bodies=11, fixed_base=True
-            RobotL (0, +0.45, 0)   RobotR (0, -0.45, 0)   둘 다 +x 향함
-작업면      env 프레임 z=0,  지면 z=-1.05
-큐브        Props/Blocks/{blue,red,green}_block.usd, 4cm
-            cube_1 (0.45,  0.00, 0.0203)   중앙  <- 양팔 공용
-            cube_2 (0.45, +0.18, 0.0203)   좌
-            cube_3 (0.45, -0.18, 0.0203)   우
+robots       FRANKA_PANDA_HIGH_PD_CFG x2   dof=9, bodies=11, fixed_base=True
+             RobotL (0, +0.45, 0)   RobotR (0, -0.45, 0)   both facing +x
+work surface env frame z=0,  ground z=-1.05
+cubes        Props/Blocks/{blue,red,green}_block.usd, 4cm
+             cube_1 (0.45,  0.00, 0.0203)   center  <- shared by both arms
+             cube_2 (0.45, +0.18, 0.0203)   left
+             cube_3 (0.45, -0.18, 0.0203)   right
 
-Franka 리치 0.855 m   베이스 간격 0.900 m   공유 작업공간 폭 0.810 m
-  cube_1  L 0.637(O)  R 0.637(O)     <- handover 성립
+Franka reach 0.855 m   base separation 0.900 m   shared workspace width 0.810 m
+  cube_1  L 0.637(O)  R 0.637(O)     <- handover feasible
   cube_2  L 0.525(O)  R 0.774(O)
   cube_3  L 0.774(O)  R 0.525(O)
 ```
 
-`base_sep` 상한은 2x0.855 = 1.71 m. 그 이상이면 리치 구가 만나지 않아 협응 태스크
-자체가 불가능하다. 0.9 는 겹침 0.81 m 로 여유 있다.
+The `base_sep` upper bound is 2x0.855 = 1.71 m. Beyond that the reach spheres
+do not intersect and coordinated tasks become impossible at all. 0.9 gives an
+overlap of 0.81 m, with margin.
 
 ---
 
-## 이 에셋의 함정 (A 프리셋에만 해당)
+## Pitfalls of this asset (Preset A only)
 
-> 주의: 이 절의 실측/결론은 `archive/dual_franka_scene.py` (구 씬) 당시 기록.
-> 현행 `bimanual_scene.py` 는 기본 `--mirror-side right` 가 렌더 검증값이고
-> 본생성(704 데모)이 이 기본값으로 돌았다 -- 현행 씬에서 dual 테이블을 쓸
-> 때는 코드 기본값이 정본.
+> Caution: the measurements/conclusions in this section date from
+> `archive/dual_franka_scene.py` (the old scene). In the current
+> `bimanual_scene.py` the default `--mirror-side right` is the render-verified
+> value and the main generation run (704 demos) used this default -- when using
+> the dual table with the current scene, the code defaults are the source of truth.
 
-`SeattleLabTable` 의 **원점이 판 중심이 아니라 마운트 쪽에 치우쳐 있다.**
-실측: 원점 -> 판 몸통 중심 오프셋 `(-0.156, +0.370)` (rot Rz(90deg) 적용 후 월드 기준).
+The **origin of `SeattleLabTable` is not the slab center; it is shifted toward
+the mount side.** Measured: origin -> slab body center offset `(-0.156, +0.370)`
+(world frame after applying rot Rz(90deg)).
 
-그래서 두 장을 그냥 나란히 놓으면 판이 한쪽으로 쏠려 **먼 쪽 다리가 홀로 튀어나온다**.
+So placing two side by side naively shifts the slabs to one side and **the far
+leg sticks out on its own**.
 
-- **z 회전으로는 고칠 수 없다.** 어떤 각도로도 "x 는 유지하고 y 만 반전"이 안 된다
-  (Rz(90deg)->(-b,a), Rz(-90deg)->(b,-a), Rz(180deg)->(-a,-b) 어느 것도 원하는 (+0.394,-0.370) 이 아님).
-- 유일한 방법이 **거울 반사**: `scale=(1,-1,1)` + `rot` 을 켤레(Rz(theta)->Rz(-theta))로.
-  `--table-mirror 2` 가 이것.
-- **왼쪽을 반전**해야 두 판이 안쪽으로 모여 겹친다 (`--mirror-side left`).
-  오른쪽을 반전하면 바깥으로 벌어져 합친 폭이 1.82 -> 3.30 m 로 커지고 가운데 이음매가 생긴다.
-- 음수 스케일은 법선을 뒤집으므로 렌더가 어두워질 수 있다. C 에는 없는 문제.
+- **No z rotation can fix it.** No angle achieves "keep x, flip only y"
+  (Rz(90deg)->(-b,a), Rz(-90deg)->(b,-a), Rz(180deg)->(-a,-b) -- none is the desired (+0.394,-0.370)).
+- The only way is a **mirror reflection**: `scale=(1,-1,1)` + conjugated `rot` (Rz(theta)->Rz(-theta)).
+  That is `--table-mirror 2`.
+- **The left one must be mirrored** so the two slabs converge inward and overlap (`--mirror-side left`).
+  Mirroring the right one spreads them outward, growing the combined width 1.82 -> 3.30 m and leaving a seam in the middle.
+- Negative scale flips normals, so rendering can come out dark. Preset C does not have this problem.
 
 ---
 
-## 다음 단계
+## Next step
 
-씨앗 궤적을 상태기계로 만든다 (텔레옵은 GUI 가 필요해 헤드리스에서 불가).
+Build seed trajectories with a state machine (teleop needs a GUI, so it is
+impossible headless).
 
 ```
-Franka 는 액션이 이미 eef 자세 delta + 그리퍼 1축이라
-궤적 = "eef waypoint 나열" 로 끝난다. 관절 설계 불필요.
+Franka actions are already eef pose delta + 1-axis gripper, so a
+trajectory is just "a list of eef waypoints". No joint-space design needed.
 
-양팔이면 상태기계 2개 + 동기화 지점이 추가된다.
-태스크 후보: handover (L 이 중앙으로 -> R 이 받아 자기 쪽에 놓기)
+Bimanual adds a second state machine + synchronization points.
+Task candidate: handover (L brings it to the center -> R takes it and places it on its own side)
 ```

@@ -1,35 +1,39 @@
-# 스캔 자산 대장
+# Scan asset ledger
 
-자산의 계보 (take -> 메시 -> 후처리 -> USD -> 소비처)를 기록한다.
-새 자산 추가 시 여기에 한 행 + postprocess 사이드카 json (자동 생성)이
-정본 근거다. **스케일은 재구성마다 임의**이므로 자산 교체 = 재캘리브레이션.
+Records asset lineage (take -> mesh -> postprocess -> USD -> consumers).
+When adding a new asset, one row here + the postprocess sidecar json
+(auto-generated) is the canonical evidence. **Scale is arbitrary per
+reconstruction**, so swapping an asset = recalibration.
 
-소재: `take6_desk_hq.usd`(+.ply, 사이드카 json) = repo 의
-`envs/office_scan/assets/` (git 추적 -- 이것이 정본. scene 기본값이 이
-경로를 읽는다). `take6_desk_final.usd`(예비판)와 `replica/` 자산은 repo
-미포함 -- 서버 작업트리의 `datasets/` (gitignore) 에만 있다.
+Location: `take6_desk_hq.usd` (+.ply, sidecar json) = the repo's
+`envs/office_scan/assets/` (git-tracked -- this is the source of truth; the
+scene default reads this path). `take6_desk_final.usd` (backup edition) and
+the `replica/` assets are not in the repo -- they exist only in the server
+worktree's `datasets/` (gitignored).
 
-## 현행 (프로토콜 office-scan-v1)
+## Current (protocol office-scan-v1)
 
-| 자산 | 원본 | 제작 체인 | 자산 스케일 | 스폰 보정 | 소비처 |
+| asset | source | production chain | asset scale | spawn correction | consumers |
 | --- | --- | --- | --- | --- | --- |
-| `take6_desk_hq.usd` | take6.mp4 (책상 중심 돔 스캔, 1080p) | bounded TSDF (DEPTH_TRUNC=15, MESH_RES=1536, SDF_TRUNC=0.1) -> postprocess pick-plane (scale 0.1209) -> replica_to_usd (sRGB->linear) | 1 유닛 = 0.1209m 가정 (칸막이 장축 = 1.4m) | x1.73 (실물 벤치 2.4m) | env4 office_scan (기본 자산) |
-| `take6_desk_final.usd` | take6.mp4 | 동일 체인, unbounded 메시 기반 | 동일 | x1.73 | env4 예비 (hq 이전 판) |
-| `replica/office_0.usd` | Replica office_0 mesh.ply | replica_to_usd (z-up, 바닥 재원점) | 원본 미터 | 없음 | env3 replica |
+| `take6_desk_hq.usd` | take6.mp4 (desk-centered dome scan, 1080p) | bounded TSDF (DEPTH_TRUNC=15, MESH_RES=1536, SDF_TRUNC=0.1) -> postprocess pick-plane (scale 0.1209) -> replica_to_usd (sRGB->linear) | 1 unit = 0.1209m assumed (partition long axis = 1.4m) | x1.73 (real bench 2.4m) | env4 office_scan (default asset) |
+| `take6_desk_final.usd` | take6.mp4 | same chain, based on the unbounded mesh | same | x1.73 | env4 backup (pre-hq edition) |
+| `replica/office_0.usd` | Replica office_0 mesh.ply | replica_to_usd (z-up, floor re-origin) | native meters | none | env3 replica |
 
-주의: 08-25 이전에 변환된 .usd 는 감마 무변환(linear passthrough) 판이라
-색이 다르다 -- replica_to_usd r2 로 재변환하면 현행 색 규약과 일치.
+Caution: .usd files converted before 08-25 are the no-gamma (linear
+passthrough) edition and the colors differ -- reconverting with
+replica_to_usd r2 matches the current color convention.
 
-## 프레임 규약 (take6 계열)
+## Frame convention (take6 family)
 
 ```
-원점 = 상판 중앙, z0 = 상판면, 칸막이 = +y (밑선 y=+0.35 자산미터)
-사람/로봇 쪽 = -y. 스폰 시 z+90도 회전으로 office 프레임(-x = 뒤)에 정합.
-상판 위 칸막이 높이 = 0.374 자산미터 (x1.73 = 실물 0.65m)
+origin = tabletop center, z0 = tabletop surface, partition = +y (base line y=+0.35 asset-meters)
+human/robot side = -y. On spawn, a z+90deg rotation aligns to the office frame (-x = back).
+partition height above the tabletop = 0.374 asset-meters (x1.73 = real 0.65m)
 ```
 
-## 재제작 절차
+## Rebuild procedure
 
-정본 = `docs/gsrecon_pipeline.md` (촬영 2절, 러너 3절, 후처리 5절).
-새 take 는 픽 4점 캘리브레이션(5절)과 스폰 스케일 재산출이 필수다 --
-office_scan_scene.py 의 SCAN_* 상수 갱신 = 프로토콜 버전업.
+Source of truth = `docs/gsrecon_pipeline.md` (capture sec. 2, runners sec. 3,
+postprocess sec. 5). A new take requires the 4-point pick calibration (sec. 5)
+and re-deriving the spawn scale -- updating the SCAN_* constants in
+office_scan_scene.py = a protocol version bump.
