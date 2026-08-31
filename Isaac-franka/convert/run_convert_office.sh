@@ -1,9 +1,16 @@
 #!/usr/bin/env bash
+# ======================================
+# File: run_convert_office.sh
+# ======================================
+# Sanghyeok Park, SSL undergraduate
+# Edit 2026-08-31
+# ======================================
+# [ver] run_convert_office.sh 2026-08-31
 # =============================================================================
-# office 마커 HDF5 -> LeRobot 데이터셋 변환 (호스트 gr00t 환경에서 실행)
+# office marker HDF5 -> LeRobot dataset 변환 (host gr00t 환경에서 실행)
 #
-# 입력: NAS 의 office 배치 폴더들 (<IN>/*/seed.hdf5, 3뷰 직접 기록본)
-# 출력: <OUT> LeRobot 데이터셋 (지시문 = 마커 개수별)
+# 입력: NAS 의 office batch 폴더들 (<IN>/*/seed.hdf5, 3-view 직접 기록본)
+# 출력: <OUT> LeRobot dataset (지시문 = marker 개수별)
 #
 # 실행:
 #   bash run_convert_office.sh

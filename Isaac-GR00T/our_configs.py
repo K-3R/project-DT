@@ -12,7 +12,7 @@ r"""양팔 Franka (신규 임베디먼트) 용 GR00T DataConfig.
     python -c "from our_configs import BimanualFrankaConfig as C; \
 c = C(); print(c.modality_config().keys()); c.transform(); print('config OK')"
 
-키 이름은 lerobot_conv 변환기가 쓰는 modality.json 과 1:1 이다:
+키 이름은 convert 변환기가 쓰는 modality.json 과 1:1 이다:
     state 18 = [L arm7 grip2 | R arm7 grip2]  (joint_pos)
     action 16 = [L pos3 quat4 grip1 | R pos3 quat4 grip1]
                 (월드 절대 TCP 명령, qw>=0 정규화 상태로 저장돼 있음)
@@ -111,7 +111,7 @@ class BimanualFrankaConfig(BaseDataConfig):
                 apply_to=self.state_keys,
                 normalization_modes=self.state_normalization_modes,
             ),
-            # action: pos/quat 는 그대로, gripper 만 binary
+            # action: pos/quat 는 그대로, gripper 만 min_max (binary 금지)
             StateActionToTensor(apply_to=self.action_keys),
             StateActionTransform(
                 apply_to=self.action_keys,

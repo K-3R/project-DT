@@ -1,18 +1,24 @@
 #!/usr/bin/env python
+# ======================================
+# File: replica_scene.py
+# ======================================
+# Sanghyeok Park, SSL undergraduate
+# Edit 2026-08-31
+# ======================================
 # [ver] replica_scene.py 2026-08-25-r2  (ascii-only console/comments)
 # r2: --floor-z (상판 z=0 자산용 바닥 높이), 조명 z 하한, room_bbox 가드
-r"""Replica 스캔 방 + 양팔 Franka 만으로 이루어진 씬 (3번째 환경).
+r"""Replica 스캔 방 + 양팔 Franka 만으로 이루어진 scene (3번째 환경).
 
-office/ 와 완전 격리다 (import 하지 않는다). 스캔 방(가구 포함)이 곧
-배경이고, 우리가 얹는 것은 로봇 2대와 받침대뿐이다.
+office/ 와 완전 격리 (import 안 함). 스캔 방(가구 포함)이 곧 배경,
+우리가 얹는 것은 로봇 2대와 받침대뿐임.
 
-좌표계: 스캔 방이 세계의 기준이다. 변환기(replica_to_usd.py)가 바닥을
-z=0, xy bbox 중심을 원점으로 재원점해 두었으므로 방은 항상 원점에 놓고,
-로봇 리그를 --base-x/--base-y/--base-yaw 로 방 안의 빈 자리에 배치한다.
+좌표계: 스캔 방이 세계의 기준. 변환기(replica_to_usd.py)가 바닥을
+z=0, xy bbox 중심을 원점으로 재원점해 둠 -> 방은 항상 원점에 놓고,
+로봇 rig 를 --base-x/--base-y/--base-yaw 로 방 안의 빈 자리에 배치함.
 
 주의 (office 에서 확정된 함정 재적용 대상):
-  - 로봇 베이스가 회전(yaw != 0 또는 기본 z180)돼 있으므로, 나중에 IK
-    실행기를 이식할 때 자코비안 루트 프레임 회전을 반드시 확인할 것
+  - 로봇 base 가 회전(yaw != 0 또는 기본 z180)돼 있으므로, 나중에 IK
+    실행기를 이식할 때 Jacobian root frame 회전을 반드시 확인할 것
     (docs/office_env_pipeline.md 시행착오 (1))
 """
 
@@ -21,13 +27,13 @@ import os
 
 # ---- 상수 ---------------------------------------------------------------
 PEDESTAL_D = 0.36  # 받침대 깊이 (x)
-PEDESTAL_MARGIN = 0.16  # 받침대가 두 베이스 바깥으로 나가는 폭
+PEDESTAL_MARGIN = 0.16  # 받침대가 두 base 바깥으로 나가는 폭
 PEDESTAL_TH = 0.04  # 받침대 상판 두께
 PEDESTAL_COLOR = (0.30, 0.30, 0.32)
 LEG_COLOR = (0.25, 0.25, 0.26)
 
 
-# ---- 헬퍼 ---------------------------------------------------------------
+# ---- helper -------------------------------------------------------------
 def vec(s):
     return tuple(float(x) for x in s.split(","))
 
@@ -44,7 +50,7 @@ def quat_mul(q1, q2):
 
 
 def quat_axis(axis, deg):
-    """x/y/z 축 회전 쿼터니언 (w,x,y,z)."""
+    """x/y/z 축 회전 quaternion (w,x,y,z)."""
     h = math.radians(deg) / 2.0
     c, s = math.cos(h), math.sin(h)
     return {
@@ -114,7 +120,7 @@ def add_scene_args(p):
         type=float,
         default=0.0,
         help="height of the floor (= pedestal leg bottom, ground plane). "
-        "use -0.70 with desk assets whose TOP is z=0 (gsrecon take6)",
+        "use -0.70 with desk assets whose TOP is z=0 (scan take6)",
     )
 
     g = p.add_argument_group("render")
@@ -131,7 +137,7 @@ def add_scene_args(p):
 
 
 def room_bbox(usd_path):
-    """변환기가 authoring 한 /Bg/Geom extent 를 읽는다 (절반폭 hx,hy 와 높이).
+    """변환기가 authoring 한 /Bg/Geom extent 를 읽음 (절반폭 hx,hy 와 높이).
 
     pxr 를 쓰므로 AppLauncher 기동 후에만 호출할 것.
     """
@@ -151,9 +157,9 @@ def room_bbox(usd_path):
     return float(hi[0]), float(hi[1]), float(hi[2])
 
 
-# ---- 씬 조립 ------------------------------------------------------------
+# ---- scene 조립 ----------------------------------------------------------
 def build(a, with_camera=True):
-    """씬 cfg 를 만든다. AppLauncher 기동 이후에만 호출할 것."""
+    """scene cfg 를 만듦. AppLauncher 기동 이후에만 호출할 것."""
     import isaaclab.sim as sim_utils
     from isaaclab.assets import AssetBaseCfg
     from isaaclab.scene import InteractiveSceneCfg
@@ -169,8 +175,8 @@ def build(a, with_camera=True):
 
     cfg = ReplicaSceneCfg(num_envs=a.num_envs, env_spacing=8.0)
 
-    # ---- 스캔 방 (가구 포함 융합 메시, 시각 전용) ------------------------
-    # 변환기가 정렬을 좌표에 구웠으므로 원점에 그대로 둔다
+    # ---- 스캔 방 (가구 포함 융합 mesh, 시각 전용) ------------------------
+    # 변환기가 정렬을 좌표에 구웠으므로 원점에 그대로 둠
     cfg.bg_scan = AssetBaseCfg(
         prim_path="{ENV_REGEX_NS}/BgScan",
         init_state=AssetBaseCfg.InitialStateCfg(pos=(0.0, 0.0, 0.0)),
@@ -178,11 +184,11 @@ def build(a, with_camera=True):
     )
 
     # ---- 실내 조명 -------------------------------------------------------
-    # 닫힌 스캔 메시(벽+천장)가 돔라이트를 막아 방 안이 어둡다 (실측).
-    # 천장 바로 아래에 아래를 비추는 디스크 라이트 5개를 심는다
+    # 닫힌 스캔 mesh(벽+천장)가 dome light 를 막아 방 안이 어두움 (실측).
+    # 천장 바로 아래에 아래를 비추는 disk light 5개를 심음
     hx, hy, hh = room_bbox(a.bg_usd)
     # 조명 z: 방 스캔은 천장 바로 아래(hh-0.15)가 맞지만, 책상 자산처럼
-    # 낮은 bbox(hh~0.4)에서는 상판 아래에 심기므로 하한을 둔다
+    # 낮은 bbox(hh~0.4)에서는 상판 아래에 심기므로 하한을 둠
     lz = max(hh - 0.15, 1.2)
     for i, (lx, ly) in enumerate(
         [
@@ -224,7 +230,7 @@ def build(a, with_camera=True):
             ),
         )
 
-    # ---- 로봇 (받침대 위 양팔, office 와 동일 리그) ----------------------
+    # ---- 로봇 (받침대 위 양팔, office 와 동일 rig) -----------------------
     if a.robots:
         from isaaclab_assets.robots.franka import FRANKA_PANDA_HIGH_PD_CFG
 
@@ -234,7 +240,7 @@ def build(a, with_camera=True):
                 enabled_self_collisions=False
             ),
         )
-        # yaw 0 = -x 를 향한다 (office 규약). 리그 전체가 base-yaw 로 돈다
+        # yaw 0 = -x 를 향함 (office 규약). rig 전체가 base-yaw 로 회전함
         q_rig = quat_axis("z", a.base_yaw)
         face = quat_mul(q_rig, (0.0, 0.0, 0.0, 1.0))
         sep = a.base_sep / 2.0

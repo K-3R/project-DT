@@ -5,7 +5,7 @@ Isaac Lab 위에 Franka 2대로 만든 양팔 워크셀과, 그 위에서 도는
 
 ```
 bimanual_scene.py         씬 정의       - 로봇 2대 ,  테이블 ,  큐브
-dual_franka_stack_sm.py   궤적 생성기   - 태스크 상태기계 + 기록
+gen_bimanual.py   궤적 생성기   - 태스크 상태기계 + 기록
 PRESETS.md                확정 프리셋   - 배치 수치와 그 근거
 archive/                  역할이 끝난 것 - 배치 결정에 쓴 검증 스크립트
 ```
@@ -19,8 +19,8 @@ archive/                  역할이 끝난 것 - 배치 결정에 쓴 검증 스
 
 ```bash
 docker exec -u 0 -e TERM=xterm -e PYTHONUNBUFFERED=1 gr00t_isaac bash -lc \
-"umask 000 && cd /root/project/isaac_franka/envs/bimanual && \
-CUDA_VISIBLE_DEVICES=2 /root/project/IsaacLab/isaaclab.sh -p dual_franka_stack_sm.py \
+"umask 000 && cd /root/project/Isaac-franka/envs/bimanual && \
+CUDA_VISIBLE_DEVICES=2 /root/project/IsaacLab/isaaclab.sh -p gen_bimanual.py \
   --headless --demos 20 --table dual \
   --out /root/project/datasets/franka_bimanual/seed.hdf5 \
   --video-dir /root/project/out/sm"

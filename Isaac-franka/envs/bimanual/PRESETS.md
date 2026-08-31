@@ -12,7 +12,7 @@ Panda 2대로 하는 것과 같은 구성.
 
 ```bash
 docker exec -u 0 -e TERM=xterm -e PYTHONUNBUFFERED=1 gr00t_isaac bash -lc \
-"umask 000 && cd /root/project/isaac_franka/envs/bimanual && \
+"umask 000 && cd /root/project/Isaac-franka/envs/bimanual && \
 CUDA_VISIBLE_DEVICES=2 /root/project/IsaacLab/isaaclab.sh -p archive/dual_franka_scene.py \
   --headless --steps 60 \
   --table dual --table-usd SeattleLabTable \
@@ -33,7 +33,7 @@ TableR  x[-0.315,+1.104] 1.419m   y[-0.910,+0.750] 1.660m
 
 ```bash
 docker exec -u 0 -e TERM=xterm -e PYTHONUNBUFFERED=1 gr00t_isaac bash -lc \
-"umask 000 && cd /root/project/isaac_franka/envs/bimanual && \
+"umask 000 && cd /root/project/Isaac-franka/envs/bimanual && \
 CUDA_VISIBLE_DEVICES=2 /root/project/IsaacLab/isaaclab.sh -p archive/dual_franka_scene.py \
   --headless --steps 60 \
   --table proc --table-size 1.4,1.8,0.05 --table-height 1.05 --table-dx 0.55 \
@@ -69,6 +69,11 @@ Franka 리치 0.855 m   베이스 간격 0.900 m   공유 작업공간 폭 0.810
 ---
 
 ## 이 에셋의 함정 (A 프리셋에만 해당)
+
+> 주의: 이 절의 실측/결론은 `archive/dual_franka_scene.py` (구 씬) 당시 기록.
+> 현행 `bimanual_scene.py` 는 기본 `--mirror-side right` 가 렌더 검증값이고
+> 본생성(704 데모)이 이 기본값으로 돌았다 -- 현행 씬에서 dual 테이블을 쓸
+> 때는 코드 기본값이 정본.
 
 `SeattleLabTable` 의 **원점이 판 중심이 아니라 마운트 쪽에 치우쳐 있다.**
 실측: 원점 -> 판 몸통 중심 오프셋 `(-0.156, +0.370)` (rot Rz(90deg) 적용 후 월드 기준).

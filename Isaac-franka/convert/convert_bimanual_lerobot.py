@@ -1,36 +1,43 @@
-r"""양팔 Franka 씨앗 HDF5 -> GR00T-LeRobot 데이터셋 변환기.
+# ======================================
+# File: convert_bimanual_lerobot.py
+# ======================================
+# Sanghyeok Park, SSL undergraduate
+# Edit 2026-08-31
+# ======================================
+# [ver] convert_bimanual_lerobot.py 2026-08-31
+r"""양팔 Franka 씨앗 HDF5 -> GR00T-LeRobot dataset 변환기.
 
 NVIDIA IsaacLabEvalTasks 의 convert_hdf5_to_lerobot.py (Apache-2.0) 를
-우리 데이터 전용으로 이식한 자립형 스크립트다. 원본 대비 변경점:
+우리 데이터 전용으로 이식한 자립형 script. 원본 대비 변경점:
 
-    1. 다중 입력: 배치 HDF5 여러 개(n2/n3/n4/n5)를 순회하며 에피소드를
-       이어 붙여 LeRobot 데이터셋 하나를 만든다 (episode_index 연속).
-    2. GR1 관절 리맵 제거: state(joint_pos 18) / action(actions 16) 을
-       그대로 통과시킨다 (이름 기반 리맵은 TCP 액션과 의미가 안 맞음).
+    1. 다중 입력: batch HDF5 여러 개(n2/n3/n4/n5)를 순회하며 episode 를
+       이어 붙여 LeRobot dataset 하나를 만듦 (episode_index 연속).
+    2. GR1 관절 remap 제거: state(joint_pos 18) / action(actions 16) 을
+       그대로 통과시킴 (이름 기반 remap 은 TCP action 과 의미가 안 맞음).
     3. 지시문: enum 대신 CLI 기본값 (HDF5 attrs 와 대조 검증).
-    4. 인코딩: ffprobe/torchvision/multiprocessing 의존 제거,
-       imageio(h264 + yuv420p) 동기 인코딩. 메타데이터는 정적 구성.
-    5. 트림 없음: 우리 데이터는 state/action/frame 이 같은 길이 T 다
+    4. encoding: ffprobe/torchvision/multiprocessing 의존 제거,
+       imageio(h264 + yuv420p) 동기 encoding. metadata 는 정적 구성.
+    5. trim 없음: 우리 데이터는 state/action/frame 이 같은 길이 T
        (원본의 [:-1] 은 Lab 의 T+1 관측 규약용이라 불필요).
 
-출력 구조 (GR00T 1.1 LeRobot 스키마):
+출력 구조 (GR00T 1.1 LeRobot schema):
     output_dir/
      +- meta/
-     |   +- info.json          (video features 에 names/fps 포함, 이슈 #291)
-     |   +- modality.json      (state/action 그룹 정의, 아래 MODALITY 참고)
-     |   +- tasks.jsonl        (지시문 + task_index=1 "valid" 더미, 이슈 #288)
+     |   +- info.json          (video features 에 names/fps 포함, issue #291)
+     |   +- modality.json      (state/action group 정의, 아래 MODALITY 참고)
+     |   +- tasks.jsonl        (지시문 + task_index=1 "valid" dummy, issue #288)
      |   +- episodes.jsonl
      +- data/chunk-000/episode_XXXXXX.parquet
      +- videos/chunk-000/observation.images.ego_view/episode_XXXXXX.mp4
-     |                   (+ left_wrist_view / right_wrist_view -- 3뷰,
+     |                   (+ left_wrist_view / right_wrist_view -- 3-view,
      |                    VIDEO_KEYS 순서 = 카메라 정체성)
 
-사용 예 (호스트 gr00t 환경):
+사용 예 (host gr00t 환경):
     python convert_bimanual_lerobot.py \
         --input-root /data1/huggingface/sslunder54/datasets/franka_bimanual \
         --output-dir ~/project/datasets/franka_bimanual_lerobot
 
-필요 패키지: h5py numpy pandas pyarrow imageio imageio-ffmpeg
+필요 package: h5py numpy pandas pyarrow imageio imageio-ffmpeg
 """
 
 import argparse
@@ -47,10 +54,10 @@ import pandas as pd
 STATE_DIM = 18
 ACTION_DIM = 16
 IMG_HW = (256, 256)
-# 개수별 지시문 (2026-08-13): 언어 입력에 호라이즌 정보를 싣는다.
-# n 은 바닥(파란 큐브) 포함 총 개수라 위에 쌓는 것은 n-1 개다.
-# task_index 는 1 이 validity 예약이라 건너뛴다 (GR00T 규약).
-# 평가 하네스(dual_franka_gr00t_eval.py)의 instruction_for 와 동일해야 함.
+# 개수별 지시문 (2026-08-13): 언어 입력에 horizon 정보를 실음.
+# n 은 바닥(파란 cube) 포함 총 개수라 위에 쌓는 것은 n-1 개.
+# task_index 는 1 이 validity 예약이라 건너뜀 (GR00T 규약).
+# 평가 harness(eval_bimanual.py)의 instruction_for 와 동일해야 함.
 TASK_INDEX_BY_N = {2: 0, 3: 2, 4: 3, 5: 4}
 
 
@@ -62,9 +69,9 @@ def instruction_for(n):
 
 STATE_KEY = "observation.state"
 ACTION_KEY = "action"
-# 3뷰 (2026-08-11): (HDF5 의 obs 키, LeRobot 키) 순서쌍. 이 "순서"가 곧
-# 카메라 정체성이다 (GR00T 는 ID 없이 순서로만 구분) -- our_configs 의
-# video_keys, 평가 하네스의 payload 와 반드시 같은 순서여야 한다.
+# 3-view (2026-08-11): (HDF5 의 obs key, LeRobot key) 순서쌍. 이 "순서"가 곧
+# 카메라 정체성 (GR00T 는 ID 없이 순서로만 구분) -- our_configs 의
+# video_keys, 평가 harness 의 payload 와 반드시 같은 순서여야 함.
 VIDEO_KEYS = [
     ("ego_view", "observation.images.ego_view"),
     ("left_wrist_view", "observation.images.left_wrist_view"),
@@ -79,7 +86,7 @@ VIDEO_PATH = (
 )
 
 # state = [L: arm7 + finger2 | R: arm7 + finger2],  action = [L: pos3 quat4 grip1 | R: 동일]
-# Step 4 커스텀 DataConfig 는 이 그룹 이름들을 그대로 참조해야 한다
+# Step 4 custom DataConfig 는 이 group 이름들을 그대로 참조해야 함
 MODALITY = {
     "state": {
         "left_arm": {"original_key": STATE_KEY, "start": 0, "end": 7},
@@ -145,7 +152,7 @@ def dump_json(data, path, **kw):
 
 
 def save_video(frames, path, fps):
-    """h264 + yuv420p 인코딩 (GR00T 는 decord/torchcodec 로 읽음, AV1 금지)."""
+    """h264 + yuv420p encoding (GR00T 는 decord/torchcodec 로 읽음, AV1 금지)."""
     import imageio
 
     os.makedirs(os.path.dirname(path), exist_ok=True)
@@ -153,7 +160,7 @@ def save_video(frames, path, fps):
 
 
 def video_feature_meta(fps):
-    """info.json 의 video feature (names + video.fps 필수, 이슈 #291)."""
+    """info.json 의 video feature (names + video.fps 필수, issue #291)."""
     return {
         "dtype": "video",
         "shape": [IMG_HW[0], IMG_HW[1], 3],
@@ -169,7 +176,7 @@ def video_feature_meta(fps):
 
 
 def convert_demo_to_df(demo, episode_index, index_start, fps, task_index):
-    """demo 그룹 하나 -> parquet 용 DataFrame (관절 리맵 없는 passthrough)."""
+    """demo group 하나 -> parquet 용 DataFrame (관절 remap 없는 passthrough)."""
     state = demo["obs"]["joint_pos"][...].astype(np.float64)
     action = demo["actions"][...].astype(np.float64)
     assert state.ndim == 2 and state.shape[1] == STATE_DIM, f"state {state.shape}"
@@ -196,7 +203,7 @@ def convert_demo_to_df(demo, episode_index, index_start, fps, task_index):
 
 
 def feature_info(df, fps):
-    """info.json 의 features 필드 (원본 get_feature_info 와 동일 규칙)."""
+    """info.json 의 features field (원본 get_feature_info 와 동일 규칙)."""
     features = {lkey: video_feature_meta(fps) for _, lkey in VIDEO_KEYS}
     for column in df.columns:
         col = np.stack(df[column], axis=0)
@@ -242,7 +249,7 @@ def main():
     meta_dir = os.path.join(out, "meta")
     os.makedirs(meta_dir, exist_ok=True)
 
-    # tasks: 개수별 지시문 4개 + validity 더미 (index 1 예약)
+    # tasks: 개수별 지시문 4개 + validity dummy (index 1 예약)
     tasks = {ti: instruction_for(n) for n, ti in TASK_INDEX_BY_N.items()}
     tasks[1] = "valid"
     episodes_info = []

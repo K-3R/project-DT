@@ -1,19 +1,26 @@
 #!/usr/bin/env bash
+# ======================================
+# File: run_rerender_3view.sh
+# ======================================
+# Sanghyeok Park, SSL undergraduate
+# Edit 2026-08-31
+# ======================================
+# [ver] run_rerender_3view.sh 2026-08-31
 # =============================================================================
-# 3뷰 재렌더 파이프라인 (호스트에서 실행)
+# 3view rerender pipeline (host 에서 실행)
 #
-# 배치마다 순차로:
-#   [1] NAS -> 홈 복사 (컨테이너는 NAS 를 못 보므로)
-#   [2] 컨테이너에서 재렌더: 기록된 관절/큐브 상태를 재생하며 손목 2뷰를
-#       추가한 seed_3view.hdf5 생성 (ego 와 궤적/액션은 원본 그대로)
-#   [3] seed_3view.hdf5 를 NAS 배치 폴더로 이동 (새 이름이라 원본과 공존)
-#   [4] 홈 사본 삭제 (홈 점유는 항상 배치 1개분, 최대 ~25GB)
+# batch 마다 순차로:
+#   [1] NAS -> home 복사 (container 는 NAS 를 못 보므로)
+#   [2] container 에서 rerender: 기록된 관절/cube 상태를 재생하며 손목 2 view 를
+#       추가한 seed_3view.hdf5 생성 (ego 와 궤적/action 은 원본 그대로)
+#   [3] seed_3view.hdf5 를 NAS batch 폴더로 이동 (새 이름이라 원본과 공존)
+#   [4] home 사본 삭제 (home 점유는 항상 batch 1개분, 최대 ~25GB)
 #
 # 실행:
 #   본 실행:  GPU=1 nohup bash run_rerender_3view.sh > ~/project/gr00t_Isaacsim/out/rr3_master.log 2>&1 &
-#   테스트:   GPU=1 DEMOS=2 BATCHES=0806_152305_n2 bash run_rerender_3view.sh
+#   test:     GPU=1 DEMOS=2 BATCHES=0806_152305_n2 bash run_rerender_3view.sh
 #             (확인 후 NAS 의 해당 seed_3view.hdf5 를 지우고 본 실행할 것 --
-#              부분 파일이 남으면 변환기가 그걸 그대로 읽는다)
+#              부분 파일이 남으면 변환기가 그걸 그대로 읽음)
 #
 # 이후 단계:
 #   재변환:  bash ../../convert/run_convert_bimanual.sh   (seed_3view -> ..._3view)
@@ -23,21 +30,21 @@
 #            DATASET=/data1/huggingface/sslunder54/datasets/franka_bimanual_lerobot_3view \
 #            bash ../../train/run_finetune.sh
 #
-# 타임아웃 / 재시도 없음. 배치는 끝날 때까지 기다린다.
+# timeout / 재시도 없음. batch 는 종료까지 대기함.
 # =============================================================================
 set -u
 
 GPU="${GPU:-}"
-# 공용 서버 규약: GPU 는 반드시 명시 (조용한 기본값 금지)
+# 공용 server 규약: GPU 는 반드시 명시 (조용한 기본값 금지)
 if [ -z "$GPU" ]; then
     echo "[rr3] ERROR: set GPU explicitly (shared server), e.g. GPU=1 ..."
     exit 1
 fi
-DEMOS="${DEMOS:-0}"          # 0 = 전체, 테스트는 2 등
+DEMOS="${DEMOS:-0}"          # 0 = 전체, test 는 2 등
 WRIST_FOV="${WRIST_FOV:-75}"
 NAS="${NAS:-/data1/huggingface/sslunder54/datasets/franka_bimanual}"
-# 레포 자기상대: HOME_DIR 은 CTN_DIR(/root/project/datasets/...)의 호스트측
-# 실체여야 한다 = 클론 루트/datasets (컨테이너 마운트와 동일 위치)
+# repo 자기상대: HOME_DIR 은 CTN_DIR(/root/project/datasets/...)의 host 측
+# 실체여야 함 = clone root/datasets (container mount 와 동일 위치)
 PROJ_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
 HOME_DIR="${HOME_DIR:-$PROJ_ROOT/datasets/franka_bimanual}"
 CTN_DIR=/root/project/datasets/franka_bimanual
@@ -45,7 +52,7 @@ LOG_DIR="$PROJ_ROOT/out"
 CONTAINER="${CONTAINER:-gr00t_isaac}"
 BATCHES="${BATCHES:-0806_152305_n2 0806_152305_n3 0806_213259_n4 0806_182704_n5}"
 
-# NAS 마운트 확인 (재부팅 후 유실 사고 재발 방지)
+# NAS mount 확인 (reboot 후 유실 사고 재발 방지)
 if ! df "$NAS" 2>/dev/null | grep -q "192.168.10.101"; then
     echo "[rr3] ERROR: NFS not mounted (df shows local disk for $NAS)"
     exit 1
@@ -65,7 +72,7 @@ for b in $BATCHES; do
     fi
 
     docker exec -u 0 -e TERM=xterm -e PYTHONUNBUFFERED=1 "$CONTAINER" bash -lc \
-        "umask 000 && cd /root/project/isaac_franka/envs/bimanual && CUDA_VISIBLE_DEVICES=$GPU /root/project/IsaacLab/isaaclab.sh -p rerender_wrist_views.py --headless --input $CTN_DIR/$b/seed.hdf5 --out $CTN_DIR/$b/seed_3view.hdf5 --wrist-fov $WRIST_FOV --demos $DEMOS" \
+        "umask 000 && cd /root/project/Isaac-franka/envs/bimanual && CUDA_VISIBLE_DEVICES=$GPU /root/project/IsaacLab/isaaclab.sh -p rerender_wrist_views.py --headless --input $CTN_DIR/$b/seed.hdf5 --out $CTN_DIR/$b/seed_3view.hdf5 --wrist-fov $WRIST_FOV --demos $DEMOS" \
         > "$LOG_DIR/rr_$b.log" 2>&1
     rc=$?
     if [ $rc -ne 0 ]; then

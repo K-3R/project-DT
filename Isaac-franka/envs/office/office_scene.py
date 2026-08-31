@@ -1,35 +1,41 @@
+# ======================================
+# File: office_scene.py
+# ======================================
+# Sanghyeok Park, SSL undergraduate
+# Edit 2026-08-31
+# ======================================
 # [ver] office_scene.py 2026-08-10-r3  (ascii-only console/comments)
 r"""
-사무실 책상 씬 -- 연구실 책상 재현 (두 번째 벤치마크 환경).
+사무실 책상 scene -- 연구실 책상 재현 (두 번째 benchmark 환경).
 
-1단계는 책상만 만든다 (로봇 없음). 로봇은 나중에 --robots 1 로 붙인다.
+1단계는 책상만 구성 (로봇 없음). 로봇은 나중에 --robots 1 로 부착.
 
-좌표계 (책상 중심 기준. 로봇 워크셀은 나중에 사람 자리에 얹는다)
+좌표계 (책상 중심 기준. 로봇 workcell 은 나중에 사람 자리에 얹음)
     z = 0        책상 상판. 바닥은 z = -desk_h
     원점         책상 중심
-    +x           사람이 앉는 쪽 (카메라가 여기서 -x 를 본다)
+    +x           사람이 앉는 쪽 (카메라가 여기서 -x 를 봄)
     사람 기준    왼쪽 = -y, 오른쪽 = +y
 
     배치
         x = -0.25   먼 가장자리: 세로 모니터(-y) + 메인 모니터(y=0, 10cm 단상)
         x = +0.10   키보드(y=0), 마우스패드+마우스(+y)
-        x = +0.62   나중에 로봇 베이스가 올 자리 (모니터까지 0.87m
-                    = Franka 리치 0.855 밖이라 팔이 모니터를 못 건드린다)
+        x = +0.62   나중에 로봇 base 가 올 자리 (모니터까지 0.87m
+                    = Franka reach 0.855 밖이라 팔이 모니터를 못 건드림)
 
 모니터
-    피벗(세로) 모니터는 스탠드까지 돌리면 안 되므로 "패널 + 스탠드" 로
-    나눠 만든다. 세로는 패널만 화면 법선(x축) 기준 90도 돌린다.
-    메인은 그 아래에 10cm 단상을 깐다.
+    pivot(세로) 모니터는 스탠드까지 돌리면 안 되므로 "패널 + 스탠드" 로
+    분리 구성. 세로는 패널만 화면 법선(x축) 기준 90도 회전.
+    메인은 그 아래에 10cm 단상 배치.
 
-에셋
+asset
     props/ 에 extract_props.py 로 뽑아 둔 USD 가 있으면 그것을 쓰고,
-    없으면 같은 치수의 프리미티브로 대체한다 (둘 다 동작한다).
-    원본은 Isaac 에셋의 Environments/Office/office.usd 다.
+    없으면 같은 치수의 primitive 로 대체 (둘 다 동작함).
+    원본은 Isaac asset 의 Environments/Office/office.usd.
 
 주의
-    최상단에서 isaaclab 를 import 하지 않는다. AppLauncher 기동 전에는
-    omni.client 가 없어 import 자체가 실패한다. isaaclab 심볼은 전부
-    build() 안에서 지연 import 한다.
+    최상단에서 isaaclab import 금지. AppLauncher 기동 전에는
+    omni.client 가 없어 import 자체가 실패함. isaaclab 심볼은 전부
+    build() 안에서 지연 import.
 """
 
 import math
@@ -38,8 +44,8 @@ import os
 PROPS_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "props")
 
 # ---- 책상 ---------------------------------------------------------------
-# 가운데 책상 + 양옆 보조 책상이 눕힌 디귿(디귿을 눕힌 U)을 이룬다.
-# 세 책상의 뒤쪽(-x) 가장자리를 맞추고, 보조 책상이 사람 쪽(+x)으로 뻗는다.
+# 가운데 책상 + 양옆 보조 책상이 눕힌 디귿(디귿을 눕힌 U)을 이룸.
+# 세 책상의 뒤쪽(-x) 가장자리를 맞추고, 보조 책상이 사람 쪽(+x)으로 뻗음.
 DESK_W = 1.4  # 가운데 책상 y 방향 폭
 DESK_D = 0.7  # 가운데 책상 x 방향 깊이
 DESK_H = 0.70  # 바닥에서 상판까지 (사용자 실측)
@@ -48,25 +54,25 @@ DESK_COLOR = (0.93, 0.93, 0.91)  # 흰색
 LEG_COLOR = (0.80, 0.80, 0.80)
 WING_LEFT = (0.6, 1.2)  # 왼쪽(-y) 보조: y 폭, x 깊이
 WING_RIGHT = (0.4, 1.2)  # 오른쪽(+y) 보조: y 폭, x 깊이
-# 파티션(칸막이): 뒤 + 좌우를 둘러싼다. 높이는 바닥 기준이다.
+# 파티션(칸막이): 뒤 + 좌우를 둘러쌈. 높이는 바닥 기준.
 PARTITION_H = 1.2
 PARTITION_TH = 0.02
 PARTITION_COLOR = (0.28, 0.28, 0.30)  # 어두운 회색
 
 # ---- 모니터 -------------------------------------------------------------
 # 실측 (extract_props.py, office.usd 의 SM_Monitor2): 두께 x, 가로 y, 세로 z.
-# 대각선이 32.8인치라, 원하는 인치를 주면 그 비율로 축척한다 (--panel-inch).
+# 대각선이 32.8인치라, 원하는 인치를 주면 그 비율로 축척함 (--panel-inch).
 PANEL_SIZE = (0.078, 0.726, 0.408)
 PANEL_DIAG_IN = 32.79  # sqrt(0.726^2 + 0.408^2) = 0.833m
-# 스탠드는 "긴 기둥 + 그 앞면에 붙는 패널" 구조다 (실제 모니터와 같은 형태).
-# 기둥 위에 패널을 얹지 않는다.
+# 스탠드는 "긴 기둥 + 그 앞면에 붙는 패널" 구조 (실제 모니터와 같은 형태).
+# 기둥 위에 패널을 얹지 않음.
 STAND_COL = (0.05, 0.06)  # 기둥 단면 x, y (높이는 패널에서 계산)
 STAND_BASE = (0.20, 0.24, 0.015)  # 스탠드 받침
-# 기둥은 패널 "중앙"에 붙는다 (VESA 마운트와 같은 위치).
-# 하단 가장자리에 얹히면 모니터가 아니라 받침대처럼 보인다.
+# 기둥은 패널 "중앙"에 붙음 (VESA mount 와 같은 위치).
+# 하단 가장자리에 얹히면 모니터가 아니라 받침대처럼 보임.
 COL_TOP_RATIO = 0.5
-# 단상은 눕힌 디귿(아치) 모양이다. 상판 + 양옆 다리, 아래는 비어 있다.
-# 너비는 모니터 가로폭과 같게 맞춘다 (--panel-inch 를 따라간다).
+# 단상은 눕힌 디귿(아치) 모양. 상판 + 양옆 다리, 아래는 비어 있음.
+# 너비는 모니터 가로폭과 같게 맞춤 (--panel-inch 를 따라감).
 RISER_D = 0.26  # x 깊이
 RISER_H = 0.10  # 높이 (사용자 실측: 10cm 단상)
 RISER_TH = 0.018  # 상판/다리 두께
@@ -76,63 +82,63 @@ STAND_COLOR = (0.12, 0.12, 0.14)
 RISER_COLOR = (0.74, 0.60, 0.42)  # 밝은 나무색
 
 # ---- 입력장치 -----------------------------------------------------------
-# 치수는 전부 extract_props.py 실측값 (프리미티브 대체용으로도 같은 값을 쓴다)
+# 치수는 전부 extract_props.py 실측값 (primitive 대체용으로도 같은 값 사용)
 KEYBOARD_X = 0.10
 KEYBOARD_SIZE = (0.156, 0.355, 0.016)  # x=깊이, y=가로, z=높이
 KEYBOARD_COLOR = (0.14, 0.14, 0.16)
 MOUSEPAD_XY = (0.08, 0.32)  # 사람 기준 오른쪽
 MOUSEPAD_SIZE = (0.200, 0.245, 0.002)
 MOUSEPAD_COLOR = (0.10, 0.10, 0.12)
-MOUSE_SIZE = (0.105, 0.053, 0.030)  # 파지 폭 5.3cm (그리퍼 8cm 안)
+MOUSE_SIZE = (0.105, 0.053, 0.030)  # 파지 폭 5.3cm (gripper 8cm 안)
 MOUSE_COLOR = (0.16, 0.16, 0.18)
 
 # ---- 본체 (PC 타워) -----------------------------------------------------
-# office.usd 의 SM_PC* 는 전부 화면 일체형(아이맥형)이라 타워로 못 쓴다.
-# 일반적인 미들타워 치수로 직접 만든다. 긴 면(x)이 벽과 나란히 선다.
+# office.usd 의 SM_PC* 는 전부 화면 일체형(iMac 형)이라 타워로 못 씀.
+# 일반적인 미들타워 치수로 직접 제작. 긴 면(x)이 벽과 나란히 섬.
 PC_SIZE = (0.45, 0.20, 0.45)  # x 깊이(벽 방향), y 폭, z 높이
 PC_GAP_FRONT = 0.15  # 앞쪽(사람이 마주보는) 파티션에서 띄우는 거리
 PC_COLOR = (0.03, 0.03, 0.035)  # 검정
 PC_FRONT_COLOR = (0.07, 0.07, 0.08)  # 전면 패널 (방 쪽을 향하는 면). 살짝만 밝게
 
-# ---- 로봇 (사람 자리. 받침대 위에 세운다) -------------------------------
+# ---- 로봇 (사람 자리. 받침대 위에 세움) ---------------------------------
 ROBOT_BASE_X = 0.62
-ROBOT_BASE_SEP = 0.60  # 두 베이스 사이 거리
+ROBOT_BASE_SEP = 0.60  # 두 base 사이 거리
 ROBOT_BASE_Z = -0.05  # 상판(0) 보다 살짝 아래
-# 받침대는 두 팔을 잇는 한 장의 낮은 책상. 따로 세우면 어색하다
+# 받침대는 두 팔을 잇는 한 장의 낮은 책상. 따로 세우면 어색함
 PEDESTAL_D = 0.36  # x 깊이
 PEDESTAL_MARGIN = 0.16  # 베이스 바깥으로 남기는 여유 (양쪽)
-# 색은 선형값이라 화면에서는 감마 보정으로 훨씬 밝아진다.
-# linear 0.30 은 sRGB 로 약 58% (중간 회색보다 밝다). 어두운 회색은 0.07 근처.
+# 색은 선형값이라 화면에서는 감마 보정으로 훨씬 밝아짐.
+# linear 0.30 은 sRGB 로 약 58% (중간 회색보다 밝음). 어두운 회색은 0.07 근처.
 PEDESTAL_COLOR = (0.075, 0.075, 0.085)  # 어두운 회색 (sRGB 약 30%)
 
 # ---- 학습용 카메라 (ego_view) -------------------------------------------
 # 서 있는 사람이 로봇 뒤에서 어깨 너머로 책상을 내려다보는 시점.
-# 바닥에서 1.60m (바닥이 z=-0.70), 로봇 베이스(x=0.62)보다 0.58m 뒤.
-# 생성기와 평가 하네스가 같은 값을 써야 학습/평가 분포가 일치한다.
+# 바닥에서 1.60m (바닥이 z=-0.70), 로봇 base(x=0.62)보다 0.58m 뒤.
+# 생성기와 평가 harness 가 같은 값을 써야 학습/평가 분포가 일치함.
 EGO_EYE = (1.20, 0.00, 0.90)
 EGO_TARGET = (0.05, 0.00, 0.08)
 
 # ---- 연필꽂이 (정리 목표 용기) ------------------------------------------
-# 왼쪽(세로) 모니터 바로 앞. 왼팔 0.57m 로 여유롭게 닿는다 (오른팔은 0.95m 라
-# 불가 -> 오른쪽 물건은 공중 핸드오버로 왼팔에 넘겨야 한다).
-# USD 컵(SM_PencilCup 등)은 충돌이 볼록껍질이라 속이 막혀서 못 쓴다.
-# 바닥판 + 벽 4장으로 직접 만든다.
+# 왼쪽(세로) 모니터 바로 앞. 왼팔 0.57m 로 여유롭게 닿음 (오른팔은 0.95m 라
+# 불가 -> 오른쪽 물건은 공중 handover 로 왼팔에 넘겨야 함).
+# USD 컵(SM_PencilCup 등)은 충돌이 볼록껍질이라 속이 막혀서 못 씀.
+# 바닥판 + 벽 4장으로 직접 제작.
 # (08-10 사용자) ego_view 에 다 보여야 해서 오른쪽으로 이동 (-0.48 -> -0.36).
-# 왼팔 0.59 로 여유, 오른팔 0.88 로 여전히 불가 = 핸드오버 구조 유지.
+# 왼팔 0.59 로 여유, 오른팔 0.88 로 여전히 불가 = handover 구조 유지.
 HOLDER_XY = (0.10, -0.36)
 HOLDER_INNER = (0.17, 0.17, 0.100)  # 안쪽 x, y, 벽 높이 (08-10 사용자: 2배 확대)
 HOLDER_WALL = 0.008
 HOLDER_COLOR = (0.20, 0.26, 0.34)
 
 # ---- 정리 대상: 마커 ----------------------------------------------------
-# 실물 펜 에셋(SM_Pen)은 높이 1.2cm 라 눕힌 것을 집으면 손끝이 상판에 닿는다
-# (1번 환경에서 검증된 안전 파지 높이는 2.5cm). 지름 2.6cm 마커로 만든다.
-# 길이 14cm 라 양 끝을 각각 잡을 수 있어 공중 핸드오버에도 맞는다.
+# 실물 펜 asset(SM_Pen)은 높이 1.2cm 라 눕힌 것을 집으면 손끝이 상판에 닿음
+# (1번 환경에서 검증된 안전 파지 높이는 2.5cm). 지름 2.6cm 마커로 제작.
+# 길이 14cm 라 양 끝을 각각 잡을 수 있어 공중 handover 에도 맞음.
 PARK = (2.5, 2.5, 0.5)
 MARKER_R = 0.013
-MARKER_SQ = 0.024  # 각단면(box) 모드의 한 변. 면 파지라 원기둥보다 훨씬 안정
+MARKER_SQ = 0.024  # 각단면(box) mode 의 한 변. 면 파지라 원기둥보다 훨씬 안정
 MARKER_L = 0.140
-# build() 에서 --marker-shape 값으로 설정된다 (item_half_h 등이 참조)
+# build() 에서 --marker-shape 값으로 설정됨 (item_half_h 등이 참조)
 MARKER_SHAPE = "cyl"
 MARKER_COLORS = [
     (0.80, 0.15, 0.15),
@@ -148,13 +154,13 @@ def item_name(i):
 
 
 def item_half_h(i):
-    """눕혀 놓았을 때의 중심 높이 [m]. usd 모드도 충돌체는 box 라 동일."""
+    """눕혀 놓았을 때의 중심 높이 [m]. usd mode 도 충돌체는 box 라 동일."""
     h = MARKER_R if MARKER_SHAPE == "cyl" else MARKER_SQ / 2.0
     return h + 0.0003
 
 
 def item_grasp_w(i):
-    """그리퍼가 무는 폭 [m]. 8cm 를 넘으면 안 된다. usd = box 충돌체."""
+    """gripper 가 무는 폭 [m]. 8cm 초과 금지. usd = box 충돌체."""
     return 2.0 * MARKER_R if MARKER_SHAPE == "cyl" else MARKER_SQ
 
 
@@ -164,7 +170,7 @@ def vec(s):
 
 
 def prop_usd(name):
-    """props/ 에 추출해 둔 USD 경로. 없으면 None (프리미티브로 대체)."""
+    """props/ 에 추출해 둔 USD 경로. 없으면 None (primitive 로 대체)."""
     p = os.path.join(PROPS_DIR, f"{name}.usd")
     return p if os.path.exists(p) else None
 
@@ -181,7 +187,7 @@ def quat_mul(q1, q2):
 
 
 def quat_axis(axis, deg):
-    """x/y/z 축 회전 쿼터니언 (w,x,y,z)."""
+    """x/y/z 축 회전 quaternion (w,x,y,z)."""
     import math
 
     h = math.radians(deg) / 2.0
@@ -195,7 +201,7 @@ def quat_axis(axis, deg):
 
 # ---- argparse -----------------------------------------------------------
 def add_scene_args(p):
-    """씬 인자. 앱 기동 전에 호출해도 안전하다 (isaaclab 불필요)."""
+    """scene 인자. 앱 기동 전에 호출해도 안전함 (isaaclab 불필요)."""
     g = p.add_argument_group("desk")
     g.add_argument("--desk-w", type=float, default=DESK_W, help="desk width along y")
     g.add_argument("--desk-d", type=float, default=DESK_D, help="desk depth along x")
@@ -389,8 +395,8 @@ def add_scene_args(p):
     g.add_argument("--num-envs", type=int, default=1)
     g.add_argument("--cam-w", type=int, default=1280)
     g.add_argument("--cam-h", type=int, default=720)
-    # 손목 카메라 2대 (3뷰 전환, docs/threeview_camera_upgrade.md).
-    # 장착 위치/자세는 Isaac Lab 공식 Franka 스택 태스크의 wrist_cam 값,
+    # 손목 카메라 2대 (3-view 전환, docs/threeview_camera_upgrade.md).
+    # 장착 위치/자세는 Isaac Lab 공식 Franka stack task 의 wrist_cam 값,
     # 화각은 LIBERO/robosuite eye_in_hand 스타일 광각 75도.
     g.add_argument(
         "--wrist-fov",
@@ -413,7 +419,7 @@ def add_scene_args(p):
         "(default = Isaac Lab official Franka stack task)",
     )
     # 쇼케이스용 고화질 다각도 카메라 (학습 데이터와 무관, 기본 꺼짐).
-    # 파이프로 나눈 시점 목록을 주면 그 수만큼 HD 카메라가 추가된다.
+    # pipe 로 나눈 시점 목록을 주면 그 수만큼 HD 카메라가 추가됨.
     g.add_argument(
         "--hd-views",
         default="",
@@ -424,9 +430,9 @@ def add_scene_args(p):
     g.add_argument("--hd-h", type=int, default=720)
 
 
-# ---- 씬 조립 ------------------------------------------------------------
+# ---- scene 조립 ---------------------------------------------------------
 def build(a, with_camera=True):
-    """씬 cfg 를 만든다. AppLauncher 기동 이후에만 호출할 것."""
+    """scene cfg 생성. AppLauncher 기동 이후에만 호출할 것."""
     import isaaclab.sim as sim_utils
     from isaaclab.assets import AssetBaseCfg, RigidObjectCfg
     from isaaclab.scene import InteractiveSceneCfg
@@ -468,8 +474,8 @@ def build(a, with_camera=True):
         )
 
     def static_usd(name, usd, pos, rot=(1.0, 0.0, 0.0, 0.0), scale=(1.0, 1.0, 1.0)):
-        # 정적 소품은 시각 맥락이 목적이라 충돌을 붙이지 않는다. 붙이면 메시
-        # 볼록껍질이 생겨 나중에 팔이 근처를 지날 때 불필요하게 걸린다.
+        # 정적 소품은 시각 맥락이 목적이라 충돌을 붙이지 않음. 붙이면 mesh
+        # 볼록껍질이 생겨 나중에 팔이 근처를 지날 때 불필요하게 걸림.
         return AssetBaseCfg(
             prim_path="{ENV_REGEX_NS}/" + name,
             init_state=AssetBaseCfg.InitialStateCfg(pos=pos, rot=rot),
@@ -483,9 +489,9 @@ def build(a, with_camera=True):
     def desk_slab(tag, cx, cy, sx, sy, top_z=0.0, color=DESK_COLOR):
         """상판 + 다리 4개. (cx, cy) 는 상판 중심, (sx, sy) 는 x/y 크기.
 
-        top_z 는 상판 윗면 높이다 (기본 0 = 책상 상판). 로봇 받침대처럼
-        더 낮은 판을 만들 때 쓴다. 다리는 항상 바닥까지 내린다.
-        상판에는 마찰 재질을 준다 (마커가 손끝에 밀려 굴러가는 것 억제).
+        top_z 는 상판 윗면 높이 (기본 0 = 책상 상판). 로봇 받침대처럼
+        더 낮은 판을 만들 때 사용. 다리는 항상 바닥까지 내림.
+        상판에는 마찰 재질 부여 (마커가 손끝에 밀려 굴러가는 것 억제).
         """
         setattr(
             cfg,
@@ -534,9 +540,9 @@ def build(a, with_camera=True):
         cfg.desk = static_usd("Desk", a.desk_usd, (0.0, 0.0, -a.desk_h))
     else:
         desk_slab("C", 0.0, 0.0, a.desk_d, a.desk_w)
-        # 보조 책상: 뒤쪽 가장자리를 맞추고 사람 쪽(+x)으로 뻗는다.
-        # 가운데 책상 "바깥"에 붙는다 -> 전체 폭 = 왼쪽 + 가운데 + 오른쪽,
-        # 사람 자리(포켓)는 가운데 책상 폭 그대로 남는다.
+        # 보조 책상: 뒤쪽 가장자리를 맞추고 사람 쪽(+x)으로 뻗음.
+        # 가운데 책상 "바깥"에 붙음 -> 전체 폭 = 왼쪽 + 가운데 + 오른쪽,
+        # 사람 자리(포켓)는 가운데 책상 폭 그대로 남음.
         for tag, spec, sgn in (("L", a.wing_left, -1.0), ("R", a.wing_right, 1.0)):
             if not spec.strip():
                 continue
@@ -549,18 +555,18 @@ def build(a, with_camera=True):
                 wy,
             )
 
-    # ---- 파티션 (회색 칸막이. 뒤 + 좌우를 둘러싼다) ----------------------
+    # ---- 파티션 (회색 칸막이. 뒤 + 좌우를 둘러쌈) ------------------------
     if a.partition:
         th = PARTITION_TH
-        pz = -a.desk_h + a.partition_h / 2  # 바닥에서 올라온다
-        # 보조 책상이 좌우로 얼마나 나가 있는지에 맞춰 파티션을 두른다
+        pz = -a.desk_h + a.partition_h / 2  # 바닥에서 올라옴
+        # 보조 책상이 좌우로 얼마나 나가 있는지에 맞춰 파티션을 두름
         wl = vec(a.wing_left) if a.wing_left.strip() else None
         wr = vec(a.wing_right) if a.wing_right.strip() else None
         y_left = -(a.desk_w / 2 + (wl[0] if wl else 0.0))
         y_right = a.desk_w / 2 + (wr[0] if wr else 0.0)
         depth_l = wl[1] if wl else a.desk_d
         depth_r = wr[1] if wr else a.desk_d
-        # 뒤쪽: 좌우 끝까지 한 장으로 덮는다 (좌우 폭이 달라 중심이 0 이 아니다)
+        # 뒤쪽: 좌우 끝까지 한 장으로 덮음 (좌우 폭이 달라 중심이 0 이 아님)
         cfg.partition_back = static_box(
             "PartitionBack",
             (back_x - th / 2, (y_left + y_right) / 2, pz),
@@ -568,7 +574,7 @@ def build(a, with_camera=True):
             PARTITION_COLOR,
             rough=0.85,
         )
-        # 좌우: 보조 책상 바깥면을 따라 사람 쪽으로 뻗는다
+        # 좌우: 보조 책상 바깥면을 따라 사람 쪽으로 뻗음
         for tag, ye, dep, sgn in (
             ("L", y_left, depth_l, -1.0),
             ("R", y_right, depth_r, 1.0),
@@ -587,23 +593,23 @@ def build(a, with_camera=True):
 
     # ---- 모니터 (긴 기둥 + 그 앞면에 붙는 패널) -------------------------
     # 실제 모니터처럼 기둥 위에 얹는 것이 아니라 기둥 앞면(+x, 사람 쪽)에
-    # 패널을 붙인다. 세로 모니터는 패널만 화면 법선(x축) 기준 90도 돌린다.
+    # 패널을 붙임. 세로 모니터는 패널만 화면 법선(x축) 기준 90도 돌림.
     panel_usd = pick_usd("monitor_panel")
     s = a.panel_inch / PANEL_DIAG_IN
     pt, pw, ph = (v * s for v in PANEL_SIZE)  # 두께, 가로, 세로 (축척 후)
     yaw_fix = quat_axis("z", a.panel_yaw)
-    # 모니터 열 위치. 0 이면 단상이 책상 뒤 가장자리에 딱 붙도록 자동 계산한다
-    # (책상 깊이를 줄이면 모니터가 책상 밖으로 나가는 것을 막는다)
+    # 모니터 열 위치. 0 이면 단상이 책상 뒤 가장자리에 딱 붙도록 자동 계산함
+    # (책상 깊이를 줄이면 모니터가 책상 밖으로 나가는 것을 막음)
     mon_x = a.monitor_x if a.monitor_x != 0.0 else back_x + RISER_D / 2 + 0.01
 
     def monitor(tag, y, portrait, base_z, lift, yaw=0.0, mx=None):
         """받침 + 긴 기둥 + 앞면에 붙는 패널.
 
         base_z  스탠드가 서는 높이 (단상 위면 단상 높이)
-        lift    패널 아래끝이 base_z 위로 얼마나 뜨는가
-                (세로 모니터는 화면이 상판에 거의 닿아야 해서 아주 작다)
+        lift    패널 아래끝이 base_z 위로 뜨는 양
+                (세로 모니터는 화면이 상판에 거의 닿아야 해서 아주 작음)
         yaw     사람 쪽으로 트는 각도 [deg]. 스탠드도 같이 돌고, 패널이
-                기둥 앞에 붙는 오프셋도 함께 회전한다
+                기둥 앞에 붙는 offset 도 함께 회전함
         """
         import math
 
@@ -614,7 +620,7 @@ def build(a, with_camera=True):
         panel_h = pw if portrait else ph  # 화면 높이
         panel_w = ph if portrait else pw  # 화면 가로
         panel_bottom = base_z + lift
-        # 기둥 꼭대기가 패널 중앙에 오도록 길이를 잡는다 (받침 두께는 뺀다)
+        # 기둥 꼭대기가 패널 중앙에 오도록 길이를 잡음 (받침 두께는 뺌)
         col_h = max(panel_bottom + panel_h * COL_TOP_RATIO - (base_z + bz), 0.02)
         q_yaw = quat_axis("z", yaw)
         c, sn = math.cos(math.radians(yaw)), math.sin(math.radians(yaw))
@@ -642,13 +648,13 @@ def build(a, with_camera=True):
             ),
         )
 
-        # 기둥 중심 기준 오프셋을 먼저 정하고, 그 벡터를 yaw 만큼 돌린다.
-        # (돌리지 않으면 패널이 기둥에서 떨어져 보인다)
+        # 기둥 중심 기준 offset 을 먼저 정하고, 그 벡터를 yaw 만큼 돌림.
+        # (돌리지 않으면 패널이 기둥에서 떨어져 보임)
         ox = kx / 2 + pt / 2  # 기둥 앞면 + 패널 두께 절반
         oy, pz = 0.0, panel_bottom + panel_h / 2
         rot = quat_mul(quat_axis("x", 90.0), yaw_fix) if portrait else yaw_fix
         if panel_usd and a.panel_origin != "center":
-            # bottom 규약: 세로로 돌리면 패널이 -y 로 눕는 만큼 보정이 필요하다
+            # bottom 규약: 세로로 돌리면 패널이 -y 로 눕는 만큼 보정 필요
             if portrait:
                 oy = panel_w / 2
             else:
@@ -667,7 +673,7 @@ def build(a, with_camera=True):
                 static_usd(f"Panel{tag}", panel_usd, pos, rot=rot, scale=(s, s, s)),
             )
         else:
-            # 프리미티브는 항상 중심 원점이라 크기만 바꿔 놓으면 된다
+            # primitive 는 항상 중심 원점이라 크기만 바꿔 놓으면 됨
             size = (pt, panel_w, panel_h)
             setattr(
                 cfg,
@@ -676,7 +682,7 @@ def build(a, with_camera=True):
             )
         return panel_h
 
-    # 메인 단상: 눕힌 디귿(아치). 상판 + 양옆 다리, 너비는 모니터 가로폭과 같다
+    # 메인 단상: 눕힌 디귿(아치). 상판 + 양옆 다리, 너비는 모니터 가로폭과 같음
     cfg.riser_top = static_box(
         "RiserTop",
         (mon_x, 0.0, a.riser_h - RISER_TH / 2),
@@ -700,21 +706,21 @@ def build(a, with_camera=True):
     monitor("main", 0.0, portrait=False, base_z=a.riser_h, lift=a.main_lift)
 
     # 세로: 사람 기준 왼쪽 = -y (오른쪽이면 +y). 화면이 상판에 거의 닿고,
-    # 사람 쪽으로 --sub-yaw 만큼 틀어 화면이 정면으로 보이게 한다.
+    # 사람 쪽으로 --sub-yaw 만큼 틀어 화면이 정면으로 보이게 함.
     if a.portrait_side != "none":
         # 주의: 여기서 지역 import math 를 하면 build() 전체에서 math 가
         # 지역 이름이 되어, 이 분기를 안 타는 --portrait-side none 실행이
-        # 아래 손목 카메라 aperture 계산에서 UnboundLocalError 로 죽는다.
-        # 모듈 상단의 import math 를 쓴다 (전수 감사에서 확정된 결함).
+        # 아래 손목 카메라 aperture 계산에서 UnboundLocalError 로 죽음.
+        # 모듈 상단의 import math 사용 (전수 감사에서 확정된 결함).
         sign = -1.0 if a.portrait_side == "left" else 1.0
-        yaw = -sign * a.sub_yaw  # 왼쪽 모니터는 +z 로 돌아야 사람을 향한다
+        yaw = -sign * a.sub_yaw  # 왼쪽 모니터는 +z 로 돌아야 사람을 향함
         t = math.radians(a.sub_yaw)
         cy, sy = math.cos(t), math.sin(t)
         ox = STAND_COL[0] / 2 + pt / 2  # 기둥 중심에서 패널 중심까지
 
-        # 두 화면의 이음매가 실제로 맞닿도록 역으로 푼다.
+        # 두 화면의 이음매가 실제로 맞닿도록 역으로 풂.
         # 세로 패널의 안쪽 모서리 = 패널중심 + Rz(yaw)*(0, +/-ph/2) 이고,
-        # 패널중심은 기둥에서 ox 만큼 앞으로 나가 있다 (그것도 yaw 로 돈다).
+        # 패널중심은 기둥에서 ox 만큼 앞으로 나가 있음 (그것도 yaw 로 돎).
         #   안쪽 모서리 y = 메인 패널 가장자리 -/+ gap
         #   안쪽 모서리 x = 메인 패널 면
         y_sub = sign * (pw / 2 + a.monitor_gap + ox * sy + (ph / 2) * cy)
@@ -765,7 +771,7 @@ def build(a, with_camera=True):
         y_wall = a.desk_w / 2 + (wr_spec[0] if wr_spec else 0.0)  # 파티션 안쪽면
         foot_x, foot_y, pc_h = PC_SIZE
         pc_x = back_x + a.pc_gap + foot_x / 2  # 앞쪽 파티션에서 pc_gap 만큼
-        pc_y = y_wall - foot_y / 2  # 벽에 딱 붙인다
+        pc_y = y_wall - foot_y / 2  # 벽에 딱 붙임
         pc_z = 0.0 if a.pc_place == "desk" else -a.desk_h
         cfg.pc = static_box(
             "PC",
@@ -774,7 +780,7 @@ def build(a, with_camera=True):
             PC_COLOR,
             rough=0.35,
         )
-        # 전면 패널: 방 쪽(-y)을 향하는 면에 얇게 덧대 타워처럼 보이게 한다
+        # 전면 패널: 방 쪽(-y)을 향하는 면에 얇게 덧대 타워처럼 보이게 함
         cfg.pc_front = static_box(
             "PCFront",
             (pc_x, pc_y - foot_y / 2 - 0.004, pc_z + pc_h / 2),
@@ -811,7 +817,7 @@ def build(a, with_camera=True):
             )
 
     if a.mouse:
-        # 마우스는 나중에 정리 대상으로도 쓸 수 있게 리지드 바디로 둔다
+        # 마우스는 나중에 정리 대상으로도 쓸 수 있게 rigid body 로 둠
         rigid = sim_utils.RigidBodyPropertiesCfg(
             solver_position_iteration_count=16,
             solver_velocity_iteration_count=1,
@@ -820,15 +826,15 @@ def build(a, with_camera=True):
         )
         mu = pick_usd("mouse")
         mz = MOUSE_SIZE[2]
-        # 추출 USD 는 원점이 바닥, 프리미티브는 중심이라 놓는 높이가 다르다.
+        # 추출 USD 는 원점이 바닥, primitive 는 중심이라 놓는 높이가 다름.
         # --mouse-rot 을 주면 회전 때문에 바닥이 어긋날 수 있으므로 살짝 띄워
-        # 떨어뜨린다 (리지드 바디라 물리가 알아서 안착시킨다).
+        # 떨어뜨림 (rigid body 라 물리가 알아서 안착시킴).
         rot = (1.0, 0.0, 0.0, 0.0)
         lift = 0.005
         if a.mouse_rot.strip():
             axis, deg = a.mouse_rot.strip()[0].lower(), float(a.mouse_rot.strip()[1:])
             rot = quat_axis(axis, deg)
-            lift = 0.06  # 회전 후 어느 면이 아래로 갈지 모르니 넉넉히 띄운다
+            lift = 0.06  # 회전 후 어느 면이 아래로 갈지 모르니 넉넉히 띄움
         z0 = lift if mu else mz / 2 + lift
         init = RigidObjectCfg.InitialStateCfg(
             pos=(MOUSEPAD_XY[0], MOUSEPAD_XY[1], z0), rot=rot
@@ -868,16 +874,16 @@ def build(a, with_camera=True):
         MARKER_SHAPE = a.marker_shape
 
         def make_item(i):
-            """마커 하나. 긴 축은 z 라, 눕히는 회전은 생성기가 리셋 때 준다."""
+            """마커 하나. 긴 축은 z 라, 눕히는 회전은 생성기가 reset 때 줌."""
             shape = a.marker_shape
             if shape == "usd":
                 mu = prop_usd(a.marker_usd)
                 if mu:
-                    # 비주얼 = 실물 펜 에셋, 충돌/질량/마찰 = box 마커와 동일.
+                    # visual = 실물 펜 asset, 충돌/질량/마찰 = box 마커와 동일.
                     # box 충돌체(guide, 비가시)와 마찰 재질(2.0/1.8 combine=
-                    # max)은 래퍼 USD 에 authoring 돼 있다 (extract_props
+                    # max)은 wrapper USD 에 authoring 됨 (extract_props
                     # --marker-src). UsdFileCfg 는 physics_material 을 못
-                    # 받으므로 여기서 다시 주지 않는다.
+                    # 받으므로 여기서 다시 주지 않음.
                     return RigidObjectCfg(
                         prim_path="{ENV_REGEX_NS}/Item_" + str(i),
                         init_state=RigidObjectCfg.InitialStateCfg(pos=PARK),
@@ -895,10 +901,10 @@ def build(a, with_camera=True):
                 rigid_props=rigid,
                 mass_props=sim_utils.MassPropertiesCfg(mass=0.02),
                 collision_props=sim_utils.CollisionPropertiesCfg(),
-                # 질량은 실물답게 20g 유지 (무거우면 그립에서 기우는 토크가
-                # 커진다). 미끄러짐/구름은 마찰로만 잡는다.
+                # 질량은 실물답게 20g 유지 (무거우면 grip 에서 기우는 토크가
+                # 커짐). 미끄러짐/구름은 마찰로만 잡음.
                 # combine=max: PhysX 기본은 두 면의 "평균"이라 손가락 패드
-                # (~0.7)와 합치면 절반으로 깎인다 -> max 로 2.0 을 강제
+                # (~0.7)와 합치면 절반으로 깎임 -> max 로 2.0 을 강제
                 physics_material=sim_utils.RigidBodyMaterialCfg(
                     static_friction=2.0,
                     dynamic_friction=1.8,
@@ -925,9 +931,9 @@ def build(a, with_camera=True):
         for i in range(1, min(a.items, MAX_ITEMS) + 1):
             setattr(cfg, f"item_{i}", make_item(i))
 
-    # ---- 로봇 (사람 자리에서 책상을 마주본다) ---------------------------
-    # 받침대 위에 올려 베이스를 상판보다 살짝 아래(--base-z)에 둔다.
-    # 바닥에 그대로 세우면 상판 높이에서의 유효 반경이 크게 줄어든다.
+    # ---- 로봇 (사람 자리에서 책상을 마주봄) -----------------------------
+    # 받침대 위에 올려 base 를 상판보다 살짝 아래(--base-z)에 둠.
+    # 바닥에 그대로 세우면 상판 높이에서의 유효 반경이 크게 줄어듦.
     if a.robots:
         from isaaclab_assets.robots.franka import FRANKA_PANDA_HIGH_PD_CFG
 
@@ -937,10 +943,10 @@ def build(a, with_camera=True):
                 enabled_self_collisions=False
             ),
         )
-        face_desk = (0.0, 0.0, 0.0, 1.0)  # z 축 180도. -x 를 향한다
+        face_desk = (0.0, 0.0, 0.0, 1.0)  # z 축 180도. -x 를 향함
         sep = a.base_sep / 2.0
-        # 받침대는 두 팔을 잇는 한 장의 낮은 책상이다 (따로 세우면 어색하다).
-        # 상판 윗면이 곧 로봇 베이스 높이가 된다.
+        # 받침대는 두 팔을 잇는 한 장의 낮은 책상 (따로 세우면 어색함).
+        # 상판 윗면이 곧 로봇 base 높이가 됨.
         desk_slab(
             "ROB",
             a.base_x,
@@ -951,9 +957,9 @@ def build(a, with_camera=True):
             color=PEDESTAL_COLOR,
         )
         # 손가락 강성 강화: 기본 stiffness 2e3 이면 마커(반지름 1.3cm) 기준
-        # 조임력 ~26N 이라 둥근 물체가 그립 안에서 기울고 빠진다 (실측).
+        # 조임력 ~26N 이라 둥근 물체가 grip 안에서 기울고 빠짐 (실측).
         # 단, 너무 세면(1e4 = ~130N) 둥근 단면이 닫히는 손가락에서 튕겨
-        # 나간다 (squirt). 6e3 = ~78N 이 절충값이다.
+        # 나감 (squirt). 6e3 = ~78N 이 절충값.
         grip_act = FRANKA_PANDA_HIGH_PD_CFG.actuators["panda_hand"].replace(
             stiffness=6.0e3, damping=2.0e2
         )
@@ -975,7 +981,7 @@ def build(a, with_camera=True):
                 pos=(a.base_x, +sep, a.base_z), rot=face_desk
             ),
         )
-        # 접촉 센서 (팔이 책상/파티션/서로에 부딪히면 에피소드 실패 처리)
+        # 접촉 센서 (팔이 책상/파티션/서로에 부딪히면 episode 실패 처리)
         from isaaclab.sensors import ContactSensorCfg
 
         cfg.contact_l = ContactSensorCfg(
@@ -1004,9 +1010,9 @@ def build(a, with_camera=True):
                 clipping_range=(0.05, 30.0),
             ),
         )
-        # 손목 카메라 2대 (3뷰 전환, docs/threeview_camera_upgrade.md 3절).
-        #   panda_hand 부착이라 로봇이 있어야 프림 경로가 성립한다.
-        #   near 0.02 = 손가락이 가깝다 / aperture = 2 * f * tan(fov/2)
+        # 손목 카메라 2대 (3-view 전환, docs/threeview_camera_upgrade.md 3절).
+        #   panda_hand 부착이라 로봇이 있어야 prim 경로가 성립함.
+        #   near 0.02 = 손가락이 가까움 / aperture = 2 * f * tan(fov/2)
         if a.robots:
             wrist_ap = 2.0 * 24.0 * math.tan(math.radians(a.wrist_fov) / 2.0)
             wrist_pos = vec(a.wrist_pos)
@@ -1033,7 +1039,7 @@ def build(a, with_camera=True):
             cfg.wrist_cam_l = wrist_cam_cfg("RobotL")
             cfg.wrist_cam_r = wrist_cam_cfg("RobotR")
 
-        # 쇼케이스 HD 카메라들 (시점 지정은 실행 스크립트가 런타임에 한다)
+        # 쇼케이스 HD 카메라들 (시점 지정은 실행 script 가 runtime 에 함)
         n_hd = len([v for v in a.hd_views.split("|") if v.strip()])
         for i in range(n_hd):
             setattr(

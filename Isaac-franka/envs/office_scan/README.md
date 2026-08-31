@@ -22,8 +22,8 @@ office_scan_scene.py   씬 모듈: office_scene 을 엔진으로 쓰고
                           ★프로토콜 확정 상수의 정본 (상단 블록)
 _overlay.py               office 스크립트를 씬만 바꿔 실행하는 관용구
 preview_office_scan.py        미리보기 (preview_office 재사용)
-eval_office_scan.py           폐루프 평가 (dual_franka_office_eval 재사용)
-gen_office_scan.py            씨앗 데모 생성 (dual_franka_office_sm 재사용)
+eval_office_scan.py           폐루프 평가 (eval_office 재사용)
+gen_office_scan.py            씨앗 데모 생성 (gen_office 재사용)
 run_eval_office_scan.sh       평가 러너 (호스트에서 실행)
 run_gen_office_scan.sh        생성 러너 (Track B: office 와 동일 시드/배치,
                           산출은 datasets/office_scan_markers 로 분리)
@@ -62,7 +62,7 @@ env2 와 완전히 동일하다.
 
 ```bash
 docker exec -u 0 -e TERM=xterm -e PYTHONUNBUFFERED=1 gr00t_isaac bash -lc \
-  "umask 000 && cd /root/project/isaac_franka/envs/office_scan && \
+  "umask 000 && cd /root/project/Isaac-franka/envs/office_scan && \
    CUDA_VISIBLE_DEVICES=<GPU> /root/project/IsaacLab/isaaclab.sh -p \
    preview_office_scan.py --headless --robots 1 --holder 1 --items 4 \
    --out /root/project/out/office_scan_preview"
@@ -87,7 +87,7 @@ CLIENT_GPU=<GPU> EPISODES_PER_N=10 VIDEO=1 PORT=5561 bash run_eval_office_scan.s
 ## 자산 계보
 
 ```
-폰 영상 take6 -> 2dgs: gsrecon/run_recon.sh (COLMAP+학습+bounded 메시)
+폰 영상 take6 -> 2d-gaussian-splatting: scan/run_scan.sh (COLMAP+학습+bounded 메시)
   -> postprocess_mesh.py --pick-plane ... (정렬/스케일/크롭; 사이드카 json)
   -> replica_to_usd.py --up z --floor-pct -1 --no-recenter (sRGB->linear)
   -> envs/office_scan/assets/take6_desk_hq.usd  (env 자산 동거; + .json

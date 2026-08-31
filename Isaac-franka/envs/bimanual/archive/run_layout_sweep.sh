@@ -20,7 +20,7 @@ MIRROR_SIDE="${MIRROR_SIDE:-left}"    # left | right | both
 MIRROR_MODE="${MIRROR_MODE:-2}"       # 0=끔 1=rot180 2=거울반사
 CONTAINER="${CONTAINER:-gr00t_isaac}"
 ISAACLAB="${ISAACLAB:-/root/project/IsaacLab}"
-DIR="${DIR:-/root/project/isaac_franka/envs/bimanual/archive}"
+DIR="${DIR:-/root/project/Isaac-franka/envs/bimanual/archive}"
 OUT="${OUT:-/root/project/out/bimanual_sweep}"          # 컨테이너에서 본 경로
 HOST_OUT="${HOST_OUT:-$HOME/project/gr00t_Isaacsim/out/bimanual_sweep}"  # 같은 곳, 호스트 경로
 ONLY="${ONLY:-}"

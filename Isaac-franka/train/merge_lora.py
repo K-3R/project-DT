@@ -1,18 +1,24 @@
 #!/usr/bin/env python
+# ======================================
+# File: merge_lora.py
+# ======================================
+# Sanghyeok Park, SSL undergraduate
+# Edit 2026-08-31
+# ======================================
 # [ver] merge_lora.py 2026-08-20-r1  (ascii-only console/comments)
-"""LoRA 어댑터를 베이스에 병합해 서빙 가능한 순정 체크포인트를 만든다.
+"""LoRA adapter 를 base 에 병합해 서빙 가능한 순정 checkpoint 를 만듦.
 
-배경: MODE=lora 학습 산출물은 어댑터만 저장된다 (adapter_model.safetensors,
-키가 전부 base_model.* + lora_A/B). inference_service 는 순정 GR00T 클래스에
-이름 매칭으로 가중치를 채우므로 이걸 직접 꽂으면 어댑터가 조용히 버려지고
-베이스 모델이 서빙된다 (경고만 찍히고 에러 없음 -- 평가 오판 위험).
-여기서 W + (alpha/r) * B @ A 로 접어서(vanilla 키) 다시 저장한다.
+배경: MODE=lora 학습 산출물은 adapter 만 저장됨 (adapter_model.safetensors,
+키가 전부 base_model.* + lora_A/B). inference_service 는 순정 GR00T class 에
+이름 matching 으로 가중치를 채우므로 이걸 직접 꽂으면 adapter 가 조용히
+버려지고 base 모델이 서빙됨 (경고만 찍히고 에러 없음 -- 평가 오판 위험).
+여기서 W + (alpha/r) * B @ A 로 접어서(vanilla 키) 다시 저장함.
 
 서버의 Gr00tPolicy 는 model_path/experiment_cfg/metadata.json (정규화 통계)
-을 요구하므로 어댑터 디렉토리의 experiment_cfg 도 함께 복사한다.
+을 요구하므로 adapter 디렉토리의 experiment_cfg 도 함께 복사함.
 
-사용 (호스트 gr00t 환경, Isaac-GR00T 레포 루트에서 -- gr00t 패키지 임포트):
-    cd ~/project/gr00t_Isaacsim/Isaac-GR00T
+사용 (호스트 gr00t 환경, Isaac-GR00T repo 루트에서 -- gr00t 패키지 import):
+    cd <클론루트>/Isaac-GR00T
     python .../merge_lora.py \
         --adapter /data1/huggingface/sslunder54/checkpoints/office_3view_lora \
         --out /data1/huggingface/sslunder54/checkpoints/office_3view_lora_merged

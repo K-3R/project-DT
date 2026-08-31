@@ -1,12 +1,20 @@
 #!/usr/bin/env bash
+# ======================================
+# File: run_server_finetuned.sh
+# ======================================
+# Sanghyeok Park, SSL undergraduate
+# Edit 2026-08-31
+# ======================================
+# [ver] run_server_finetuned.sh 2026-08-31
 # =============================================================================
 # 양팔 Franka 파인튜닝 체크포인트용 GR00T 추론 서버 (호스트 gr00t 환경)
 #
-#   SERVER_GPU=0 bash run_server_finetuned.sh
+#   SERVER_GPU=2 CKPT=/data1/huggingface/sslunder54/checkpoints/lab_office_sim \
+#     bash run_server_finetuned.sh
 #
-# 주의: data-config / embodiment-tag 는 학습과 동일해야 한다 (정규화 통계가
+# 주의: data-config / embodiment-tag 는 학습과 동일해야 함 (정규화 통계가
 #       체크포인트 metadata 에 태그 키로 저장돼 있음). our_configs.py 가
-#       레포 루트에 있어야 하고, 실행 위치도 레포 루트여야 한다.
+#       레포 루트에 있어야 하고, 실행 위치도 레포 루트여야 함.
 # 중단: Ctrl+C (포그라운드) 또는 pkill -f inference_service
 # =============================================================================
 set -euo pipefail
@@ -19,10 +27,16 @@ if [ -z "$SERVER_GPU" ]; then
 fi
 PORT="${PORT:-5555}"
 DENOISE="${DENOISE:-4}"
-# 레포 자기상대: train/ -> isaac_franka -> 클론 루트 (어느 클론에서든 동작)
+# 레포 자기상대: train/ -> Isaac-franka -> 클론 루트 (어느 클론에서든 동작)
 PROJ_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 GR00T_DIR="${GR00T_DIR:-$PROJ_ROOT/Isaac-GR00T}"
-CKPT="${CKPT:-/data1/huggingface/sslunder54/checkpoints/bimanual_full}"
+# CKPT 도 GPU 처럼 명시 필수 (조용한 기본값 = 엉뚱한 ckpt 로 평가 전체 오염 함정)
+CKPT="${CKPT:-}"
+if [ -z "$CKPT" ]; then
+    echo "[server] ERROR: set CKPT explicitly (no silent default), e.g."
+    echo "  CKPT=/data1/huggingface/sslunder54/checkpoints/lab_office_sim"
+    exit 1
+fi
 DCFG="${DCFG:-our_configs:BimanualFrankaConfig}"
 
 if [ ! -d "$CKPT" ]; then

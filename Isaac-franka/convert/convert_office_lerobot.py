@@ -1,26 +1,33 @@
-r"""office 마커 정리 태스크 HDF5 -> GR00T-LeRobot 데이터셋 변환기.
+# ======================================
+# File: convert_office_lerobot.py
+# ======================================
+# Sanghyeok Park, SSL undergraduate
+# Edit 2026-08-31
+# ======================================
+# [ver] convert_office_lerobot.py 2026-08-31
+r"""office marker 정리 task HDF5 -> GR00T-LeRobot dataset 변환기.
 
-convert_bimanual_lerobot.py 의 office 판이다. 로봇/카메라/차원 규약은
-동일하고 (양팔 Franka, state 18 / action 16, 3뷰), 태스크 고유 부분만
-다르다:
+convert_bimanual_lerobot.py 의 office 판. 로봇/카메라/차원 규약은
+동일하고 (양팔 Franka, state 18 / action 16, 3-view), task 고유 부분만
+다름:
 
-    1. 지시문: 마커 개수별 "put {n} marker(s) into the pencil holder"
-       (평가 하네스 office 판의 instruction_for 와 반드시 동일해야 함)
+    1. 지시문: marker 개수별 "put {n} marker(s) into the pencil holder"
+       (평가 harness office 판의 instruction_for 와 반드시 동일해야 함)
     2. 개수 attr: num_markers / num_items / num_cubes 순으로 탐색
-       (office 생성기가 쓰는 키 이름에 자동 대응)
-    3. 입력 파일: office 는 3뷰를 생성 때 직접 기록하므로 기본 이름이
-       seed.hdf5 다 (bimanual 의 seed_3view.hdf5 와 다름)
+       (office 생성기가 쓰는 key 이름에 자동 대응)
+    3. 입력 파일: office 는 3-view 를 생성 때 직접 기록하므로 기본 이름이
+       seed.hdf5 (bimanual 의 seed_3view.hdf5 와 다름)
 
 출력 구조 / 규약 / 함정은 bimanual 변환기와 동일:
     video_keys 순서 = ego -> left_wrist -> right_wrist (= 카메라 정체성)
-    task_index 1 은 validity 더미 예약 (GR00T 규약)
+    task_index 1 은 validity dummy 예약 (GR00T 규약)
 
-사용 예 (호스트 gr00t 환경):
+사용 예 (host gr00t 환경):
     python convert_office_lerobot.py \
         --input-root /data1/huggingface/sslunder54/datasets/office_markers \
         --output-dir /data1/huggingface/sslunder54/datasets/office_markers_lerobot
 
-필요 패키지: h5py numpy pandas pyarrow imageio imageio-ffmpeg
+필요 package: h5py numpy pandas pyarrow imageio imageio-ffmpeg
 """
 
 import argparse
@@ -53,11 +60,11 @@ VIDEO_PATH = (
     "videos/chunk-{episode_chunk:03d}/{video_key}/episode_{episode_index:06d}.mp4"
 )
 
-# 마커 개수별 지시문. 개수 = 넣는 개수 그대로 (큐브의 n-1 과 다름).
-# task_index 1 은 validity 예약이라 건너뛴다.
+# marker 개수별 지시문. 개수 = 넣는 개수 그대로 (cube 의 n-1 과 다름).
+# task_index 1 은 validity 예약이라 건너뜀.
 TASK_INDEX_BY_N = {1: 0, 2: 2, 3: 3, 4: 4}
 
-# office 생성기의 개수 attr 키 후보 (순서대로 탐색)
+# office 생성기의 개수 attr key 후보 (순서대로 탐색)
 COUNT_ATTR_CANDIDATES = ("num_markers", "num_items", "num_cubes")
 
 
@@ -163,7 +170,7 @@ def video_feature_meta(fps):
 
 
 def convert_demo_to_df(demo, episode_index, index_start, fps, task_index):
-    """demo 그룹 하나 -> parquet 용 DataFrame (관절 리맵 없는 passthrough)."""
+    """demo group 하나 -> parquet 용 DataFrame (관절 remap 없는 passthrough)."""
     state = demo["obs"]["joint_pos"][...].astype(np.float64)
     action = demo["actions"][...].astype(np.float64)
     assert state.ndim == 2 and state.shape[1] == STATE_DIM, f"state {state.shape}"

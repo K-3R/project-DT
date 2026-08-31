@@ -1,3 +1,10 @@
+# ======================================
+# File: groot_client.py
+# ======================================
+# Sanghyeok Park, SSL undergraduate
+# Edit 2026-08-31
+# ======================================
+# [ver] groot_client.py 2026-08-31
 import io
 import json
 
@@ -17,7 +24,7 @@ class MsgSerializer:
 
     @staticmethod
     def _decode(obj):
-        # ModalityConfig 는 서버에서만 쓰는 클래스라 여기선 dict 로 둔다.
+        # ModalityConfig 는 서버에서만 쓰는 class 라 여기선 dict 로 둠.
         if "__ModalityConfig_class__" in obj:
             return json.loads(obj["as_json"])
         if "__ndarray_class__" in obj:
@@ -53,7 +60,7 @@ class GrootClient:
         try:
             raw = self.socket.recv()
         except zmq.error.Again:
-            # timeout 이 나면 REQ 소켓이 잠기므로 새로 연결해야 다음 호출이 됨
+            # timeout 이 나면 REQ socket 이 잠기므로 새로 연결해야 다음 호출이 됨
             self.socket.close()
             self._connect()
             raise TimeoutError(

@@ -1,10 +1,17 @@
 #!/usr/bin/env bash
+# ======================================
+# File: run_gen_office_scan.sh
+# ======================================
+# Sanghyeok Park, SSL undergraduate
+# Edit 2026-08-31
+# ======================================
+# [ver] run_gen_office_scan.sh 2026-08-31
 # =============================================================================
-# 스캔 책상판 office 마커 태스크 씨앗 생성 + NAS 이동 (호스트에서 실행)
+# scan 책상판 office marker task 씨앗 생성 + NAS 이동 (host 에서 실행)
 #
-# run_gen_office.sh 의 스캔 배경판 (Track B: 인도메인 데이터).
-# 배치/시드/수량을 office 와 동일하게 유지해 초기상태 분포를 맞춘다 --
-# 두 데이터셋의 차이가 "배경"뿐이어야 비교가 성립한다.
+# run_gen_office.sh 의 scan 배경판 (Track B: in-domain 데이터).
+# batch/seed/수량을 office 와 동일하게 유지해 초기상태 분포를 맞춤 --
+# 두 dataset 의 차이가 "배경"뿐이어야 비교가 성립함.
 # 산출 폴더/NAS 는 office_scan_markers 로 분리 (office 데이터와 섞임 방지).
 #
 # 실행:
@@ -19,21 +26,21 @@
 set -u
 
 GPU="${GPU:-}"
-# 공용 서버 규약: GPU 는 반드시 명시 (조용한 기본값 금지)
+# 공용 server 규약: GPU 는 반드시 명시 (조용한 기본값 금지)
 if [ -z "$GPU" ]; then
     echo "[office-scan] ERROR: set GPU explicitly (shared server), e.g. GPU=1 ..."
     exit 1
 fi
 CONTAINER="${CONTAINER:-gr00t_isaac}"
-# 레포 자기상대: 클론 루트 = 컨테이너의 /root/project 마운트 (OUT_CTN 과 동일 위치)
+# repo 자기상대: clone root = container 의 /root/project mount (OUT_CTN 과 동일 위치)
 PROJ_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
-GEN_DIR=/root/project/isaac_franka/envs/office_scan
+GEN_DIR=/root/project/Isaac-franka/envs/office_scan
 OUT_CTN=/root/project/datasets/office_scan_markers
 OUT_HOST="$PROJ_ROOT/datasets/office_scan_markers"
 NAS=/data1/huggingface/sslunder54/datasets/office_scan_markers
 LOG_DIR="$PROJ_ROOT/out"
 
-# 배치 정의: 태그:시드:개수범위:시도횟수 (office 와 동일 시드 = 분포 정합)
+# batch 정의: tag:seed:개수범위:시도횟수 (office 와 동일 seed = 분포 정합)
 BATCHES="${BATCHES:-m1:100:1,1:220 m2:200:2,2:230 m3:300:3,3:250}"
 
 # ---- 시작 전 검증: NAS 쓰기 가능 여부 ----
@@ -48,9 +55,9 @@ if ! df "$NAS" 2>/dev/null | grep -q "192.168.10.101"; then
     exit 1
 fi
 
-# ---- 시작 전 검증: 같은 태그 잔재 금지 ----
-# 킬/크래시된 이전 런의 폴더가 남아 있으면 시드가 태그에 고정돼 있어
-# 재실행분과 동일한 에피소드가 중복 유입된다 (변환기는 NAS 의 모든 폴더를
+# ---- 시작 전 검증: 같은 tag 잔재 금지 ----
+# kill/crash 된 이전 run 의 폴더가 남아 있으면 seed 가 tag 에 고정이라
+# 재실행분과 동일한 episode 가 중복 유입됨 (변환기는 NAS 의 모든 폴더를
 # 조용히 순회). 지우거나 옮긴 뒤 재실행할 것.
 for spec in $BATCHES; do
     tag="${spec%%:*}"

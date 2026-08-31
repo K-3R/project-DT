@@ -1,4 +1,10 @@
 #!/usr/bin/env python3
+# ======================================
+# File: replica_to_usd.py
+# ======================================
+# Sanghyeok Park, SSL undergraduate
+# Edit 2026-08-31
+# ======================================
 # [ver] replica_to_usd.py 2026-08-26-r3  (ascii-only console/comments)
 # r3: simulation_app.close() 제거 (헤드리스에서 반환 안 하는 경우가 있어
 #     os._exit(0) 도달 전에 좀비화 -- 형제 스크립트들과 동일 정책으로 통일)
@@ -8,28 +14,33 @@
 #     필요하면 --color-gamma linear 를 쓸 것.
 """Replica 스캔 mesh.ply 를 Isaac 용 정적 배경 USD 로 변환한다.
 
-Replica (facebookresearch/Replica-Dataset) 의 씬 메시는 방 전체가 한 덩어리로
-융합된 스캔 메시다. 이 스크립트는 그 ply 를 읽어 다음을 수행한다:
+Replica (facebookresearch/Replica-Dataset) 의 scene mesh 는 방 전체가 한
+덩어리로 융합된 스캔 mesh 임. 이 script 는 그 ply 를 읽어 다음을 수행함:
 
-  1. 바이너리 리틀엔디언 ply 파싱 (외부 의존성 없이 numpy 만 사용)
-  2. 업축 정렬 (y-up 스캔이면 z-up 으로 회전) - 좌표에 직접 굽는다
+  1. binary little endian ply parsing (외부 의존성 없이 numpy 만 사용)
+  2. 업축 정렬 (y-up 스캔이면 z-up 으로 회전) - 좌표에 직접 구움
   3. 바닥 재원점 (바닥 높이 백분위 추정 -> z=0), xy 중심 재원점
-  4. 버텍스 컬러 -> displayColor primvar + UsdPreviewSurface 머티리얼
-     (RTX 가 머티리얼 없는 displayColor 를 무시해도 보이게 안전판)
-  5. 2단 구조 /Bg(빈 Xform, 기본프림) + /Bg/Geom(메시) - Isaac Lab 이
-     스폰 때 최상위 변환을 덮어쓰는 함정 대응 (extract_props 와 동일)
-  6. 선택: 정적 삼각메시 충돌 (--physics static). 기본은 시각 전용
-     (책상 리그에서 벽까지 멀어 충돌이 불필요하고 쿠킹 비용만 든다)
+  4. vertex color -> displayColor primvar + UsdPreviewSurface material
+     (RTX 가 material 없는 displayColor 를 무시해도 보이게 안전판)
+  5. 2단 구조 /Bg(빈 Xform, 기본 prim) + /Bg/Geom(mesh) - Isaac Lab 이
+     spawn 때 최상위 변환을 덮어쓰는 함정 대응 (extract_props 와 동일)
+  6. 선택: 정적 삼각 mesh 충돌 (--physics static). 기본은 시각 전용
+     (책상 rig 에서 벽까지 멀어 충돌이 불필요하고 cooking 비용만 듦)
 
-실행 (컨테이너 안. pxr 는 kit 앱이 떠야 잡히므로 --headless 필수,
-extract_props.py 와 동일 패턴):
+공용 계약: office_scan 의 take 자산 변환도 이 변환기를 씀
+(scan/postprocess_mesh.py 다음 단계; --up z --floor-pct -1 --no-recenter).
+옵션 기본값/색 규약(sRGB->linear)을 바꾸면 replica 와 office_scan 양쪽
+자산 계보가 함께 영향받음 -- ASSETS.md 대조 필수.
+
+실행 (container 안. pxr 는 kit app 이 떠야 잡히므로 --headless 필수,
+extract_props.py 와 동일 pattern):
   docker exec -u 0 gr00t_isaac bash -lc "umask 000 && \
-    /root/project/IsaacLab/isaaclab.sh -p \
-    /root/project/isaac_franka/envs/replica/replica_to_usd.py --headless \
+    CUDA_VISIBLE_DEVICES=5 /root/project/IsaacLab/isaaclab.sh -p \
+    /root/project/Isaac-franka/envs/replica/replica_to_usd.py --headless \
     --ply /root/project/datasets/replica/office_0/mesh.ply \
     --out /root/project/datasets/replica/office_0.usd"
 
-주의: 컨테이너는 NAS(/data1)를 못 보므로 ply 는 홈(~/project) 경유로 복사.
+주의: container 는 NAS(/data1)를 못 보므로 ply 는 홈(~/project) 경유로 복사.
 """
 
 import argparse
@@ -39,7 +50,7 @@ import sys
 
 import numpy as np
 
-# ply 타입 이름 -> numpy dtype (바이너리 리틀엔디언)
+# ply type 이름 -> numpy dtype (binary little endian)
 PLY_TYPES = {
     "char": "i1",
     "int8": "i1",
@@ -61,9 +72,9 @@ PLY_TYPES = {
 
 
 def parse_header(f):
-    """ply 헤더를 파싱해 (형식, 원소 목록) 을 돌려준다.
+    """ply header 를 parse 해 (형식, 원소 목록) 을 돌려줌.
 
-    원소 = (이름, 개수, [스칼라 속성 (타입, 이름)] 또는 리스트 속성 1개).
+    원소 = (이름, 개수, [scalar 속성 (type, 이름)] 또는 list 속성 1개).
     """
     magic = f.readline().strip()
     if magic != b"ply":
@@ -102,7 +113,7 @@ def parse_header(f):
 
 
 def read_scalar_element(f, count, props):
-    """스칼라 속성만 있는 원소 블록을 구조체 배열로 읽는다."""
+    """scalar 속성만 있는 원소 block 을 구조체 배열로 읽음."""
     if any(p[0] == "list" for p in props):
         raise SystemExit(
             "ERROR: list property inside a scalar element is not supported"
@@ -115,7 +126,7 @@ def read_scalar_element(f, count, props):
 
 
 def read_face_element(f, count, props):
-    """리스트 속성(면 인덱스) 원소를 읽는다. 균일 꼭짓점 수는 벡터화 fast path.
+    """list 속성(면 index) 원소를 읽음. 균일 꼭짓점 수는 vectorized fast path.
 
     반환: (face_counts int32[N], face_indices int32[sum]).
     """
@@ -133,7 +144,7 @@ def read_face_element(f, count, props):
     k = int(head[0])
     f.seek(pos)
 
-    # fast path: 모든 면이 같은 꼭짓점 수라고 가정하고 통째로 읽는다
+    # fast path: 모든 면이 같은 꼭짓점 수라고 가정하고 통째로 읽음
     rec = np.dtype([("n", "<" + cnt_t), ("idx", "<" + idx_t, (k,))])
     arr = np.fromfile(f, dtype=rec, count=count)
     if arr.shape[0] == count and bool((arr["n"] == k).all()):
@@ -173,7 +184,7 @@ def read_ply(path):
             elif name == "face":
                 counts, indices = read_face_element(f, count, props)
             else:
-                # 관심 없는 원소 (edge 등): 스칼라면 건너뛰고, 리스트면 포기
+                # 관심 없는 원소 (edge 등): scalar 면 건너뛰고, list 면 포기
                 if any(p[0] == "list" for p in props):
                     raise SystemExit(f"ERROR: cannot skip list element '{name}'")
                 sz = sum(np.dtype(t).itemsize for kind, t, n in props)
@@ -184,7 +195,7 @@ def read_ply(path):
 
 
 def pick_up_axis(verts, mode):
-    """업축 결정. auto 는 bbox 가 가장 짧은 축(실내는 높이가 최소)을 고른다."""
+    """업축 결정. auto 는 bbox 가 가장 짧은 축(실내는 높이가 최소)을 고름."""
     if mode in ("y", "z"):
         return mode
     ext = verts.max(axis=0) - verts.min(axis=0)
@@ -202,7 +213,7 @@ def main():
     p.add_argument("--ply", required=True, help="input mesh.ply (binary little endian)")
     p.add_argument("--out", required=True, help="output .usd path")
     # Replica 는 z-up 확정 (repo issue #26, 저자: gravity = -z). ScanNet 등
-    # 다른 소스를 쓸 때만 auto/y 를 고려할 것 (auto 는 bbox 최단축 휴리스틱).
+    # 다른 source 를 쓸 때만 auto/y 를 고려할 것 (auto 는 bbox 최단축 heuristic).
     p.add_argument(
         "--up",
         choices=["auto", "y", "z"],
@@ -246,6 +257,10 @@ def main():
     AppLauncher.add_app_launcher_args(p)
     a = p.parse_args()
 
+    # 공용 서버 규약: GPU 명시 필수 (미지정 시 kit 이 GPU0 을 무는 사고 방지)
+    if not os.environ.get("CUDA_VISIBLE_DEVICES"):
+        sys.exit("[replica2usd] ERROR: set CUDA_VISIBLE_DEVICES explicitly (shared server)")
+
     print(f"[replica2usd] read {a.ply}")
     verts, colors, counts, indices = read_ply(a.ply)
     n_v, n_f = verts.shape[0], counts.shape[0]
@@ -281,8 +296,8 @@ def main():
         "max=({:.2f},{:.2f},{:.2f})".format(*shift, *lo, *hi)
     )
 
-    # pxr 는 kit 앱이 떠야 임포트된다 (extract_props 와 동일 패턴).
-    # ply 읽기/정렬을 앱 기동보다 앞에 둬서 입력 오류는 빨리 실패시킨다.
+    # pxr 는 kit app 이 떠야 import 됨 (extract_props 와 동일 pattern).
+    # ply 읽기/정렬을 app 기동보다 앞에 둬서 입력 오류는 빨리 실패시킴.
     app_launcher = AppLauncher(a)
     simulation_app = app_launcher.app
     from pxr import Gf, Sdf, Usd, UsdGeom, UsdPhysics, UsdShade, Vt
@@ -293,8 +308,8 @@ def main():
     UsdGeom.SetStageUpAxis(stage, UsdGeom.Tokens.z)
     UsdGeom.SetStageMetersPerUnit(stage, 1.0)
 
-    # 2단 구조: 최상위 /Bg 는 비워 두고 (Isaac Lab 이 스폰 변환으로 덮어씀)
-    # 지오메트리는 /Bg/Geom 아래에 둔다. 정렬은 좌표에 이미 구웠다.
+    # 2단 구조: 최상위 /Bg 는 비워 두고 (Isaac Lab 이 spawn 변환으로 덮어씀)
+    # geometry 는 /Bg/Geom 아래에 둠. 정렬은 좌표에 이미 구움.
     top = UsdGeom.Xform.Define(stage, "/Bg")
     stage.SetDefaultPrim(top.GetPrim())
     mesh = UsdGeom.Mesh.Define(stage, "/Bg/Geom")
@@ -302,9 +317,9 @@ def main():
     mesh.CreateFaceVertexCountsAttr(Vt.IntArray.FromNumpy(counts))
     mesh.CreateFaceVertexIndicesAttr(Vt.IntArray.FromNumpy(indices))
     mesh.CreateSubdivisionSchemeAttr(UsdGeom.Tokens.none)
-    # 스캔 메시는 구멍/뒤집힌 면이 흔해 양면 렌더가 안전하다
+    # 스캔 mesh 는 구멍/뒤집힌 면이 흔해 양면 render 가 안전함
     mesh.CreateDoubleSidedAttr(True)
-    # Gf.Vec3f 는 numpy 스칼라를 안 받는다 (Boost.Python) - 순수 float 로
+    # Gf.Vec3f 는 numpy scalar 를 안 받음 (Boost.Python) - 순수 float 로
     mesh.CreateExtentAttr(
         Vt.Vec3fArray(
             [
@@ -320,14 +335,14 @@ def main():
         )
         c = colors.astype(np.float32) / 255.0
         if a.color_gamma == "srgb":
-            # PLY 의 8비트 색은 sRGB 인데 USD displayColor/diffuseColor 는
-            # 리니어로 해석된다. 그대로 넣으면 밝고 채도 빠진(물빠진) 색이
-            # 된다 -> sRGB EOTF 역변환을 굽는다 (08-25 실측)
+            # PLY 의 8bit 색은 sRGB 인데 USD displayColor/diffuseColor 는
+            # linear 로 해석됨. 그대로 넣으면 밝고 채도 빠진(물빠진) 색이
+            # 됨 -> sRGB EOTF 역변환을 구움 (08-25 실측)
             c = np.where(c <= 0.04045, c / 12.92, ((c + 0.055) / 1.055) ** 2.4)
         pv.Set(Vt.Vec3fArray.FromNumpy(c.astype(np.float32)))
         if not a.no_material:
-            # RTX 가 머티리얼 없는 메시의 displayColor 를 안 그릴 수 있어
-            # primvar 리더로 diffuse 에 연결한 머티리얼을 같이 심는다
+            # RTX 가 material 없는 mesh 의 displayColor 를 안 그릴 수 있어
+            # primvar reader 로 diffuse 에 연결한 material 을 같이 심음
             mat = UsdShade.Material.Define(stage, "/Bg/VtxColorMat")
             surf = UsdShade.Shader.Define(stage, "/Bg/VtxColorMat/Surface")
             surf.CreateIdAttr("UsdPreviewSurface")
@@ -359,7 +374,23 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
-    # isaaclab.sh -p 가 앱 없이도 프로세스를 붙잡는 경우 대비 (작업 완료 후 종료)
-    sys.stdout.flush()
-    os._exit(0)
+    # isaaclab.sh -p 가 프로세스를 붙잡는 경우 대비 강제 종료. 예외/sys.exit
+    # 도 여기서 rc 보존 -- kit 기동 후 일반 종료는 좀비화 가능 (r3 참조)
+    rc = 0
+    try:
+        main()
+    except SystemExit as e:
+        if isinstance(e.code, int):
+            rc = e.code
+        elif e.code is not None:
+            print(e.code, file=sys.stderr)
+            rc = 1
+    except BaseException:
+        import traceback
+
+        traceback.print_exc()
+        rc = 1
+    finally:
+        sys.stdout.flush()
+        sys.stderr.flush()
+        os._exit(rc)

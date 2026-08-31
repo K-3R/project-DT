@@ -1,17 +1,23 @@
 #!/usr/bin/env python
-# [ver] dual_franka_office_eval.py 2026-08-15-r1  (ascii-only console/comments)
+# ======================================
+# File: eval_office.py
+# ======================================
+# Sanghyeok Park, SSL undergraduate
+# Edit 2026-08-31
+# ======================================
+# [ver] eval_office.py 2026-08-15-r1  (ascii-only console/comments) (구명: dual_franka_office_eval.py)
 r"""
-사무실 마커 태스크 폐루프 평가 하네스 (env2).
+사무실 마커 task 폐루프 평가 harness (env2).
 
-파인튜닝된 GR00T 체크포인트를 추론 서버에 띄워 두고, 이 스크립트가
-생성기(dual_franka_office_sm.py)와 같은 씬/랜덤 배치에서 정책을 굴려
-"마커를 연필꽂이에 꽂기" 성공률을 잰다. 구조는 1번 환경 하네스
-(bimanual/dual_franka_gr00t_eval.py)를 그대로 따르고, 씬/리셋/성공판정만
-office 생성기에서 가져왔다 (격리 원칙: bimanual 파일은 import 하지 않음).
+finetune 된 GR00T checkpoint 를 추론 server 에 띄워 두고, 이 script 가
+생성기(gen_office.py)와 같은 scene/random 배치에서 정책을 굴려
+"마커를 연필꽂이에 꽂기" 성공률을 측정함. 구조는 1번 환경 harness
+(bimanual/eval_bimanual.py)를 그대로 따르고, scene/reset/성공판정만
+office 생성기에서 가져옴 (격리 원칙: bimanual 파일은 import 하지 않음).
 
 구조
-    [이 스크립트: Isaac 씬] --obs(3뷰+joint18+지시문)--> [GR00T server]
-                            <--action chunk(16 x 16dim TCP)---
+    [이 script: Isaac scene] --obs(3 view+joint18+지시문)--> [GR00T server]
+                             <--action chunk(16 x 16dim TCP)---
 
 규약 (학습 데이터와 동일해야 함)
     관측  video.ego_view / video.left_wrist_view / video.right_wrist_view
@@ -20,18 +26,18 @@ office 생성기에서 가져왔다 (격리 원칙: bimanual 파일은 import �
           state.right_gripper(1,2) / annotation.human.task_description
     지시문 개수별 "put {n} marker(s) into the pencil holder"
           (convert_office_lerobot.py 의 instruction_for 와 동일해야 함)
-    액션  월드 절대 TCP 목표 16차원 = [Lpos3 Lquat4 Lgrip1 | R 동일]
-          실행은 액션 1개당 물리 6스텝(120Hz -> 20Hz), 매 스텝 렌더
+    action  world 절대 TCP 목표 16차원 = [Lpos3 Lquat4 Lgrip1 | R 동일]
+            실행은 action 1개당 물리 6 step (120Hz -> 20Hz), 매 step render
     성공  생성기와 같은 판정: 모든 마커가 연필꽂이 안
     부분  level = 종료 시점에 통 안에 든 마커 수 (0..n)
 
 주의 (office 고유 함정)
-    이 씬은 로봇 베이스가 z180 으로 돌아 있어 PhysX 월드 자코비안을
-    루트 프레임으로 되돌리는 회전이 필수다 (생성기 Arm.apply 와 동일).
-    bimanual 하네스의 ArmExec 를 그대로 쓰면 팔이 반대로 간다.
+    이 scene 은 로봇 base 가 z180 으로 돌아 있어 PhysX world Jacobian 을
+    root frame 으로 되돌리는 회전이 필수 (생성기 Arm.apply 와 동일).
+    bimanual harness 의 ArmExec 를 그대로 쓰면 팔이 반대로 감.
 
-사용 (서버를 먼저 띄운 뒤; run_server_finetuned.sh CKPT=ckpt_office_3view)
-    CUDA_VISIBLE_DEVICES=1 isaaclab.sh -p dual_franka_office_eval.py \
+사용 (server 를 먼저 띄운 뒤; run_server_finetuned.sh CKPT=ckpt_office_3view)
+    CUDA_VISIBLE_DEVICES=1 isaaclab.sh -p eval_office.py \
         --headless --episodes-per-n 10 --out-dir /root/project/out/eval_office
 """
 
@@ -89,14 +95,14 @@ g.add_argument("--video-dir", default="", help="per-episode mp4 dir (empty = off
 g.add_argument("--stamp", type=int, default=1, help="append KST timestamp to outputs")
 g.add_argument("--tag", default="", help="suffix after the timestamp")
 
-# 마커 랜덤 배치 knob: 생성기와 같은 기본값 = 같은 초기상태 분포
+# 마커 random 배치 knob: 생성기와 같은 기본값 = 같은 초기상태 분포
 g = parser.add_argument_group("randomization (must match the generator)")
 g.add_argument("--region", default="0.06,0.26,-0.26,0.38")
 g.add_argument("--min-sep", type=float, default=0.11)
 g.add_argument("--rand-tries", type=int, default=400)
 g.add_argument("--tool-offset", type=float, default=0.1034)
 
-# ================================================================== 2. 앱 기동
+# ================================================================== 2. app 기동
 from isaaclab.app import AppLauncher  # noqa: E402
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -104,18 +110,18 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import office_scene as osc  # noqa: E402
 
 osc.add_scene_args(parser)
-# 학습 데이터와 동일: 카메라 256, 로봇/연필꽂이 켬, 마커는 씬 최대 생성
+# 학습 데이터와 동일: 카메라 256, 로봇/연필꽂이 켬, 마커는 scene 최대 생성
 parser.set_defaults(cam_w=256, cam_h=256, robots=1, items=osc.MAX_ITEMS, holder=1)
 AppLauncher.add_app_launcher_args(parser)
 args = parser.parse_args()
-args.enable_cameras = True  # 관측이 카메라이므로 항상 켠다
+args.enable_cameras = True  # 관측이 카메라이므로 항상 켬
 args.robots = 1
 
 app_launcher = AppLauncher(args)
 simulation_app = app_launcher.app
 
 if args.stamp:
-    # 컨테이너가 UTC 라 KST 로 고정한다 (생성기와 동일)
+    # container 가 UTC 라 KST 로 고정함 (생성기와 동일)
     from datetime import datetime, timedelta, timezone
 
     KST = timezone(timedelta(hours=9))
@@ -149,8 +155,8 @@ from isaaclab.utils.math import (  # noqa: E402
 )
 
 # ================================================================== 3. 수학
-# 생성기(dual_franka_office_sm.py)와 동일한 규약. 생성기는 스크립트라
-# import 할 수 없어 필요한 최소만 복사한다 (변경 시 양쪽 동기화할 것).
+# 생성기(gen_office.py)와 동일한 규약. 생성기는 script 라
+# import 할 수 없어 필요한 최소만 복사함 (변경 시 양쪽 동기화 필요).
 GRIP_OPEN, GRIP_CLOSE = 0.04, 0.0
 GRIP_TH = 0.5 * (GRIP_OPEN + GRIP_CLOSE)  # 정책 출력 이진화 임계
 
@@ -167,7 +173,7 @@ def canonical_quat(q):
 
 
 def norm_quat(q):
-    """정책 출력 쿼터니언은 노름이 정확히 1 이 아닐 수 있어 정규화한다."""
+    """정책 출력 quaternion 은 norm 이 정확히 1 이 아닐 수 있어 정규화함."""
     q = np.asarray(q, dtype=np.float64)
     n = float(np.linalg.norm(q))
     if n < 1e-6:
@@ -176,7 +182,7 @@ def norm_quat(q):
 
 
 def instruction_for(n):
-    """개수별 지시문. convert_office_lerobot.py 와 글자 단위로 동일해야 한다."""
+    """개수별 지시문. convert_office_lerobot.py 와 글자 단위로 동일해야 함."""
     unit = "marker" if n == 1 else "markers"
     return f"put {n} {unit} into the pencil holder"
 
@@ -220,7 +226,7 @@ def save_video(frames, path, fps):
 
 
 # ================================================================== 4. 배치
-# 생성기와 동일한 마커 배치 샘플러 (초기상태 분포 일치)
+# 생성기와 동일한 마커 배치 sampler (초기상태 분포 일치)
 def forbidden_rects(a):
     hx, hy = vec(a.holder_xy)
     kx, ky, _ = osc.KEYBOARD_SIZE
@@ -271,7 +277,7 @@ def sample_layout(rng, a, n):
 
 
 def reset_episode(scene, sim, rng, a, n, dt):
-    """생성기와 동일한 리셋: 로봇 상태+PD 목표 초기화, 마커 배치, 워밍업."""
+    """생성기와 동일한 reset: 로봇 상태+PD 목표 초기화, 마커 배치, warmup."""
     scene.reset()
     for r in (scene["robot_l"], scene["robot_r"]):
         q = r.data.default_joint_pos.clone()
@@ -297,18 +303,18 @@ def reset_episode(scene, sim, rng, a, n, dt):
         obj.write_root_state_to_sim(st)
 
     scene.write_data_to_sim()
-    for _ in range(90):  # 안정화 + temporal 누적버퍼 워밍업 (이전 잔상 제거)
+    for _ in range(90):  # 안정화 + temporal 누적 buffer warmup (이전 잔상 제거)
         sim.step(render=True)
         scene.update(dt)
 
 
 # ================================================================== 5. 팔 실행기
 class ArmExec:
-    """정책이 준 월드 TCP 목표를 IK 로 실행하는 축소판 Arm (상태기계 없음).
+    """정책이 준 world TCP 목표를 IK 로 실행하는 축소판 Arm (상태기계 없음).
 
-    apply() 의 자코비안 회전이 office 고유 필수 사항이다: 이 씬은 로봇
-    베이스가 z180 이라 월드 프레임 자코비안을 루트 프레임으로 되돌리지
-    않으면 IK 방향이 반전된다 (생성기 2차 실행에서 실측, 공식
+    apply() 의 Jacobian 회전이 office 고유 필수 사항임: 이 scene 은 로봇
+    base 가 z180 이라 world frame Jacobian 을 root frame 으로 되돌리지
+    않으면 IK 방향이 반전됨 (생성기 2차 실행에서 실측, 공식
     task_space_actions.py jacobian_b 와 동일한 변환).
     """
 
@@ -347,7 +353,7 @@ class ArmExec:
         return s[:, 0:3], s[:, 3:7]
 
     def aim(self, tcp_pos_w, quat_w):
-        """월드 TCP 목표 -> hand 원점 목표 -> 루트 프레임 IK 명령."""
+        """world TCP 목표 -> hand 원점 목표 -> root frame IK 명령."""
         quat_w = canonical_quat(norm_quat(quat_w))
         q = torch.tensor([quat_w], dtype=torch.float32, device=self.dev)
         axis = torch.tensor(
@@ -362,7 +368,7 @@ class ArmExec:
         self.ik.set_command(torch.cat([bp, bq], dim=-1))
 
     def hold_here(self):
-        """명령 공백 금지: 지금 자세를 목표로 세운다 (생성기와 동일 함정 대응)."""
+        """명령 공백 금지: 지금 자세를 목표로 세움 (생성기와 동일 함정 대응)."""
         ep, eq = self.eef_pose_w()
         rp, rq = self.root_pose_w()
         bp, bq = subtract_frame_transforms(rp, rq, ep, eq)
@@ -379,7 +385,7 @@ class ArmExec:
         ]
         ep, eq = self.eef_pose_w()
         rp, rq = self.root_pose_w()
-        # 월드 자코비안 -> 루트 프레임 (office 필수, 위 클래스 docstring 참조)
+        # world Jacobian -> root frame (office 필수, 위 class docstring 참조)
         rot_t = matrix_from_quat(quat_inv(rq))
         jac = jac.clone()
         jac[:, :3, :] = torch.bmm(rot_t, jac[:, :3, :])
@@ -393,12 +399,12 @@ class ArmExec:
         self.robot.set_joint_position_target(g, joint_ids=self.finger_ids)
 
 
-# ================================================================== 6. 관측/액션
+# ================================================================== 6. 관측/action
 def build_payload(scene, cams, text):
-    """학습 데이터(modality.json)와 정확히 같은 키/차원의 관측.
+    """학습 데이터(modality.json)와 정확히 같은 key/차원의 관측.
 
-    3뷰 키 순서 = ego -> left_wrist -> right_wrist
-    (변환기 VIDEO_KEYS / our_configs video_keys 와 동일해야 한다)
+    3 view key 순서 = ego -> left_wrist -> right_wrist
+    (변환기 VIDEO_KEYS / our_configs video_keys 와 동일해야 함)
     """
     jl = scene["robot_l"].data.joint_pos[0].cpu().numpy().astype(np.float64)
     jr = scene["robot_r"].data.joint_pos[0].cpu().numpy().astype(np.float64)
@@ -415,7 +421,7 @@ def build_payload(scene, cams, text):
 
 
 def parse_chunk(chunk):
-    """서버 응답 -> (T,) 시퀀스 6개. T = 모델 호라이즌(16)."""
+    """server 응답 -> (T,) sequence 6개. T = model horizon(16)."""
     lp = np.asarray(chunk["action.left_eef_pos"]).reshape(-1, 3)
     lq = np.asarray(chunk["action.left_eef_quat"]).reshape(-1, 4)
     lg = np.asarray(chunk["action.left_gripper"]).reshape(-1)
@@ -475,7 +481,7 @@ def write_results(out_dir, a, rows):
         )
 
 
-# ================================================================== 7. 메인
+# ================================================================== 7. main
 def main():
     torch.manual_seed(args.seed)
     rng = np.random.default_rng(args.seed)
@@ -537,7 +543,7 @@ def main():
             for t in range(n_exec):
                 arm_l.command(lp[t], lq[t], lg[t])
                 arm_r.command(rp[t], rq[t], rg[t])
-                for _ in range(6):  # 액션 1개 = 물리 6스텝 (20Hz), 매 스텝 렌더
+                for _ in range(6):  # action 1개 = 물리 6 step (20Hz), 매 step render
                     arm_l.apply()
                     arm_r.apply()
                     scene.write_data_to_sim()
@@ -545,7 +551,7 @@ def main():
                     scene.update(dt)
                 ctrl += 1
                 if args.video_dir:
-                    # 리뷰 영상은 모델이 실제로 본 3뷰를 가로로 붙여 저장
+                    # 확인용 영상은 model 이 실제로 본 3 view 를 가로로 붙여 저장
                     frames.append(
                         np.concatenate([grab_rgb(c) for c in cams], axis=1)
                     )
@@ -571,7 +577,7 @@ def main():
                 20,
             )
         if args.out_dir:
-            write_results(args.out_dir, args, rows)  # 매 에피소드 갱신 (중단 안전)
+            write_results(args.out_dir, args, rows)  # 매 episode 갱신 (중단 안전)
 
     n_ok = sum(r["success"] for r in rows)
     by_n = {}
@@ -597,8 +603,8 @@ if __name__ == "__main__":
         sys.stdout.flush()
         os._exit(1)
     finally:
-        # simulation_app.close() 는 헤드리스에서 반환하지 않는 경우가 있어
-        # 결과를 디스크에 쓴 뒤 바로 프로세스를 끝낸다 (좀비 방지)
+        # simulation_app.close() 는 headless 에서 반환하지 않는 경우가 있어
+        # 결과를 disk 에 쓴 뒤 바로 process 를 끝냄 (zombie 방지)
         sys.stdout.flush()
         sys.stderr.flush()
         os._exit(0)

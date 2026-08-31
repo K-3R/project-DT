@@ -1,4 +1,10 @@
 #!/usr/bin/env python
+# ======================================
+# File: check_3view_demos.py
+# ======================================
+# Sanghyeok Park, SSL undergraduate
+# Edit 2026-08-31
+# ======================================
 # [ver] check_3view_demos.py 2026-08-11-r1  (ascii-only console/comments)
 r"""
 재렌더 산출물(seed_3view.hdf5) 검수 도구.
@@ -43,7 +49,7 @@ def check_file(path, src_path, sample_demos, out_dir, make_video):
         if os.path.exists(src_path):
             with h5py.File(src_path, "r") as hs:
                 n_src = len(hs["data"])
-                # 원본 불변 표본 대조: 첫 데모의 actions / ego_view 첫 프레임
+                # 원본 불변 표본 대조: 첫 데모의 actions / ego_view 첫 frame
                 k0 = keys[0]
                 a_new = grp[k0]["actions"][...]
                 a_src = hs["data"][k0]["actions"][...]
@@ -107,8 +113,8 @@ def check_file(path, src_path, sample_demos, out_dir, make_video):
             )
             vp = os.path.join(out_dir, f"{name}_{k}_3view.mp4")
             try:
-                # format 을 명시해 ffmpeg 백엔드가 없을 때 다른 플러그인
-                # (tifffile 등)으로 흘러가 죽는 것을 막는다
+                # format 을 명시해 ffmpeg backend 가 없을 때 다른 plugin
+                # (tifffile 등)으로 흘러가 죽는 것을 막음
                 imageio.mimsave(
                     vp,
                     frames,

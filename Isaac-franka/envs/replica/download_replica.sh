@@ -1,19 +1,26 @@
 #!/usr/bin/env bash
+# ======================================
+# File: download_replica.sh
+# ======================================
+# Sanghyeok Park, SSL undergraduate
+# Edit 2026-08-31
+# ======================================
+# [ver] download_replica.sh 2026-08-31
 # =============================================================================
-# Replica 스캔 데이터셋 다운로드 + office 씬 mesh.ply 추출 (호스트에서 실행)
+# Replica 스캔 dataset 다운로드 + office scene mesh.ply 추출 (host 에서 실행)
 #
 # Replica (facebookresearch/Replica-Dataset) 는 통짜 tar.gz 를 2GB 씩 17개로
-# 쪼갠 형태로만 배포된다 (부분 다운로드 불가, 총 37.9GB). 이 스크립트는:
-#   1. 분할 파트 17개를 NAS 로 받는다 (wget -c 라 중단돼도 이어받기)
-#   2. 파트별 기대 크기를 검증한다 (aa..ap = 2GB 정확히, aq = 1.86GB)
-#   3. 스트림 해제하며 office_0..4 의 mesh.ply 만 추출한다 (PTEX 텍스처는
-#      ReplicaSDK 없이 못 쓰므로 받지 않는다 -- 디스크 절약)
+# 쪼갠 형태로만 배포됨 (부분 다운로드 불가, 총 37.9GB). 이 script 는:
+#   1. 분할 part 17개를 NAS 로 받음 (wget -c 라 중단돼도 이어받기)
+#   2. part 별 기대 크기를 검증함 (aa..ap = 2GB 정확히, aq = 1.86GB)
+#   3. stream 해제하며 office_0..4 의 mesh.ply 만 추출함 (PTEX texture 는
+#      ReplicaSDK 없이 못 쓰므로 받지 않음 -- disk 절약)
 #
 # 실행:
-#   nohup bash download_replica.sh > ~/project/gr00t_Isaacsim/out/replica_dl.log 2>&1 &
-# 재실행해도 안전하다 (받은 파트는 건너뛰고, 추출만 다시 한다).
+#   nohup bash download_replica.sh > <클론루트>/out/replica_dl.log 2>&1 &
+# 재실행해도 안전함 (받은 part 는 건너뛰고, 추출만 다시 함).
 #
-# 다음 단계 (변환): 컨테이너는 NAS 를 못 보므로 mesh.ply 를 홈으로 복사 후
+# 다음 단계 (변환): container 는 NAS 를 못 보므로 mesh.ply 를 홈으로 복사 후
 # replica_to_usd.py 실행 -- docs/replica_background.md 참조.
 # =============================================================================
 set -u
@@ -22,11 +29,11 @@ NAS_BASE=/data1/huggingface/sslunder54/replica
 PARTS_DIR="$NAS_BASE/parts"
 REL=https://github.com/facebookresearch/Replica-Dataset/releases/download/v1.0
 SCENES="${SCENES:-office_0 office_1 office_2 office_3 office_4}"
-# 마지막 파트(aq)만 크기가 다르다. 나머지는 정확히 2,000,000,000 바이트
+# 마지막 part(aq)만 크기가 다름. 나머지는 정확히 2,000,000,000 byte
 SIZE_NORMAL=2000000000
 SIZE_LAST=1859047808
 
-# ---- 시작 전 검증: NFS 마운트 + 쓰기 가능 ----
+# ---- 시작 전 검증: NFS mount + 쓰기 가능 ----
 mkdir -p "$PARTS_DIR" || { echo "[replica] ERROR: cannot create $PARTS_DIR"; exit 1; }
 if ! df "$NAS_BASE" 2>/dev/null | grep -q "192.168.10.101"; then
     echo "[replica] ERROR: NFS not mounted (df shows local disk)"
@@ -48,7 +55,7 @@ fi
 
 echo "[replica] start $(date '+%m%d %H:%M:%S') nas=$NAS_BASE scenes=$SCENES"
 
-# ---- 1. 분할 파트 다운로드 (이어받기) ----
+# ---- 1. 분할 part 다운로드 (이어받기) ----
 SUFFIXES="aa ab ac ad ae af ag ah ai aj ak al am an ao ap aq"
 for suf in $SUFFIXES; do
     f="$PARTS_DIR/replica_v1_0.tar.gz.part$suf"
@@ -72,9 +79,9 @@ for suf in $SUFFIXES; do
 done
 echo "[replica] all 17 parts verified ($(du -sh "$PARTS_DIR" | cut -f1))"
 
-# ---- 2. office 씬의 mesh.ply 만 스트림 추출 ----
-# 통짜 스트림을 한 번 훑는다 (수십 분). 패턴 앞의 * 는 tar 내부 경로가
-# "office_0/..." 인지 "./office_0/..." 인지 확정 못 해서 (둘 다 매칭).
+# ---- 2. office scene 의 mesh.ply 만 stream 추출 ----
+# 통짜 stream 을 한 번 훑음 (수십 분). pattern 앞의 * 는 tar 내부 경로가
+# "office_0/..." 인지 "./office_0/..." 인지 확정 못 해서 (둘 다 match).
 PATTERNS=""
 ALL_DONE=1
 for s in $SCENES; do

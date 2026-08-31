@@ -1,4 +1,4 @@
-# isaac_franka -- Isaac Lab Franka x GR00T 벤치마크 모음
+# Isaac-franka -- Isaac Lab Franka x GR00T 벤치마크 모음
 
 Isaac Lab 위에 양팔 Franka 환경 4개를 만들고 GR00T 로 데이터 생성/학습/평가
 하는 트랙의 인덱스. 각 환경은 하위 디렉토리로 격리되어 있고, 상세는 각자의
@@ -46,7 +46,7 @@ ASSETS.md           스캔 자산 대장 (take -> ply -> usd -> 스케일 계보
 | | 호스트 | 컨테이너 |
 | --- | --- | --- |
 | 프로젝트 루트 | `~/project/project-DT` (클론 위치) | `/root/project` |
-| 이 폴더 | `.../isaac_franka` | `/root/project/isaac_franka` |
+| 이 폴더 | `.../Isaac-franka` | `/root/project/Isaac-franka` |
 | Isaac Lab | `.../IsaacLab` | `/root/project/IsaacLab` |
 | 생성 데이터 | `.../datasets` (실행 시 자동 생성) | `/root/project/datasets` |
 

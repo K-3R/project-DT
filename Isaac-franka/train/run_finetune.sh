@@ -1,27 +1,36 @@
 #!/usr/bin/env bash
+# ======================================
+# File: run_finetune.sh
+# ======================================
+# Sanghyeok Park, SSL undergraduate
+# Edit 2026-08-31
+# ======================================
+# [ver] run_finetune.sh 2026-08-31
 # =============================================================================
 # GR00T N1.5 파인튜닝 러너 (호스트 gr00t 환경에서 실행)
 #
 # 모드 (MODE):
 #   pipe = LoRA 50스텝 배관검증 -- 데이터 로딩/저장/VRAM 실측이 목적
+#   lora = LoRA 본학습 (rank 64) -- STEPS/SAVE 로 조절
 #   full = 풀 파인튜닝 본학습 -- batch 10 / 32k 스텝 (STEPS/SAVE 로 조절)
+#          (vision/LLM 동결 -- gr00t_finetune 기본값. projector+DiT 만 학습)
 #
 # 사용:
 #   GPU=3 MODE=pipe bash run_finetune.sh
-#   GPU=3 MODE=full nohup bash run_finetune.sh > ~/project/gr00t_Isaacsim/out/finetune_full.log 2>&1 &
+#   GPU=3 MODE=full nohup bash run_finetune.sh > <클론루트>/out/finetune_full.log 2>&1 &
 #
-# 사전 1회 패치 (Isaac-GR00T/scripts/gr00t_finetune.py 2곳 -- 러너는 검사만 함):
+# upstream 패치 2곳 (이 클론의 Isaac-GR00T 에는 이미 적용됨 -- 러너는 검사만 함.
+# upstream 을 새로 받았을 때만 아래 sed 로 재적용):
 #   (a) 체크포인트 보존 개수:
-#     sed -i -E 's/save_total_limit=[0-9]+,/save_total_limit=4,/' scripts/gr00t_finetune.py
-#     (4 = 8k/16k/24k/32k 를 남겨 에폭별 성능 비교 가능. 17GB x 4 = 68GB.
-#      1 이면 마지막 것만 남아 최적 에폭을 사후에 찾을 수 없다)
+#     sed -i -E 's/save_total_limit=[0-9]+,/save_total_limit=1,/' scripts/gr00t_finetune.py
+#     (1 = 마지막 것만 유지, 17GB. 에폭별 성능 비교가 필요하면 4 로 -- 68GB)
 #   (b) GPU 강제고정 해제 (num_gpus=1 이면 무조건 0번을 쓰는 코드):
 #     sed -i 's|os.environ\["CUDA_VISIBLE_DEVICES"\] = "0"|os.environ.setdefault("CUDA_VISIBLE_DEVICES", "0")|' scripts/gr00t_finetune.py
 #
-# 사전 1회 배치: our_configs.py 를 Isaac-GR00T 레포 루트로 복사
+# our_configs.py 배치: 정본 = train/our_configs.py, 배포 사본 = Isaac-GR00T
+# 레포 루트 (이 클론에는 커밋돼 있음. 정본 수정 시 재복사 필수)
 #
-# VRAM 한도 20GB (공용서버): 시작 후 nvidia-smi 로 피크 확인.
-# 초과 시 레버: batch 10 -> 8, 그래도면 full 에서 --tune-visual 제거.
+# VRAM 한도 20GB (공용서버): 시작 후 nvidia-smi 로 피크 확인. 초과 시 batch 10 -> 8.
 # =============================================================================
 set -u
 export PYTHONUNBUFFERED=1
@@ -33,23 +42,24 @@ if [ -z "$GPU" ]; then
     exit 1
 fi
 MODE="${MODE:-pipe}"
-# 레포 자기상대: train/ -> isaac_franka -> 클론 루트 (어느 클론에서든 동작)
+# 레포 자기상대: train/ -> Isaac-franka -> 클론 루트 (어느 클론에서든 동작)
 PROJ_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 REPO="${REPO:-$PROJ_ROOT/Isaac-GR00T}"
-DATASET="${DATASET:-/data1/huggingface/sslunder54/datasets/franka_bimanual_lerobot}"
+# 기본 = 3뷰 (our_configs 가 3뷰 요구. 구 1뷰 franka_bimanual_lerobot 은 비교용)
+DATASET="${DATASET:-/data1/huggingface/sslunder54/datasets/franka_bimanual_lerobot_3view}"
 BASE="${BASE:-/data1/huggingface/sslunder54/checkpoints/n1.5-3b}"
 OUT="${OUT:-/data1/huggingface/sslunder54/checkpoints/bimanual_$MODE}"
 BATCH="${BATCH:-10}"
 STEPS="${STEPS:-32000}"
 SAVE="${SAVE:-8000}"
 
-# 웜스타트(BASE = 기존 파인튜닝 체크포인트) 시 OUT 이 BASE 를 덮으면 안 된다
+# 웜스타트(BASE = 기존 파인튜닝 체크포인트) 시 OUT 이 BASE 를 덮으면 안 됨
 if [ "$BASE" = "$OUT" ]; then
     echo "[ft] ERROR: OUT must differ from BASE (would overwrite the warm-start checkpoint)"
     exit 1
 fi
 
-# ---- 사전 검증: 잘못된 상태로 몇 시간 돌기 전에 전부 여기서 걸러낸다 ----
+# ---- 사전 검증: 잘못된 상태로 몇 시간 돌기 전에 전부 여기서 걸러냄 ----
 fail() { echo "[ft] ERROR: $1"; exit 1; }
 
 [ -d "$REPO" ] || fail "repo not found: $REPO"

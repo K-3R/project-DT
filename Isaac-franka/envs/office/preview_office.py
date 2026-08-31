@@ -1,10 +1,16 @@
 #!/usr/bin/env python
+# ======================================
+# File: preview_office.py
+# ======================================
+# Sanghyeok Park, SSL undergraduate
+# Edit 2026-08-31
+# ======================================
 # [ver] preview_office.py 2026-08-10-r2  (ascii-only console/comments)
 r"""
-사무실 책상 씬 미리보기 -- 배치를 눈으로 확인하고 조정하기 위한 도구.
+사무실 책상 scene 미리보기 -- 배치를 눈으로 확인하고 조정하기 위한 도구.
 
-물리를 잠깐 돌려 안정시킨 뒤 여러 시점에서 PNG 를 저장한다. 로봇/물건
-없이 배경(책상 + 모니터 2대 + 키보드/마우스)만 먼저 확인하는 용도다.
+물리를 잠깐 돌려 안정시킨 뒤 여러 시점에서 PNG 를 저장함. 로봇/물건
+없이 배경(책상 + 모니터 2대 + 키보드/마우스)만 먼저 확인하는 용도.
 
 사용
     CUDA_VISIBLE_DEVICES=3 isaaclab.sh -p preview_office.py --headless
@@ -31,14 +37,14 @@ parser.add_argument(
 parser.add_argument(
     "--views",
     default=(
-        "1.20,0.00,0.90"  # 0 ego_view (학습용 시점. 선 사람이 어깨 너머로 본다)
+        "1.20,0.00,0.90"  # 0 ego_view (학습용 시점. 선 사람이 어깨 너머로 봄)
         "|0.75,0.00,0.55"  # 1 앉은 눈높이 (비교용)
         "|1.25,1.05,0.85"  # 2 오른쪽 비스듬히
         "|1.25,-1.05,0.85"  # 3 왼쪽 비스듬히
         "|0.30,0.00,1.90"  # 4 위에서 내려다보기 (평면 배치)
-        "|2.20,1.80,1.60"  # 5 멀리서 전체, 오른쪽 위 (파티션까지)
+        "|2.20,1.80,1.60"  # 5 멀리서 전체, 오른쪽 위 (partition 까지)
         "|2.20,-1.80,1.60"  # 6 멀리서 전체, 왼쪽 위 (5 의 반대편)
-        "|0.55,0.55,0.30"  # 7 책상면 클로즈업 (물건 확인용)
+        "|0.55,0.55,0.30"  # 7 책상면 close-up (물건 확인용)
     ),
     help="camera eye positions, pipe separated",
 )
@@ -57,7 +63,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import office_scene as osc  # noqa: E402
 
 osc.add_scene_args(parser)
-parser.set_defaults(cam_w=960, cam_h=720)  # 미리보기는 크게 본다
+parser.set_defaults(cam_w=960, cam_h=720)  # 미리보기는 크게 봄
 AppLauncher.add_app_launcher_args(parser)
 args = parser.parse_args()
 args.enable_cameras = True
@@ -78,7 +84,7 @@ def vec(s):
 
 
 def place_items(scene, sim, rng, a):
-    """정리 대상 물건을 구역에 겹치지 않게 뿌린다 (2단계용)."""
+    """정리 대상 물건을 구역에 겹치지 않게 뿌림 (2단계용)."""
     if a.items <= 0:
         return
     xmin, xmax, ymin, ymax = vec(a.item_region)
@@ -99,7 +105,7 @@ def place_items(scene, sim, rng, a):
             )
             + scene.env_origins
         )
-        # 실린더 축이 기본 z 라 y 축 90도로 눕히고, 그 위에 무작위 yaw 를 준다
+        # cylinder 축이 기본 z 라 y 축 90도로 눕히고, 그 위에 무작위 yaw 를 줌
         lay = osc.quat_mul(
             osc.quat_axis("z", float(rng.uniform(-180.0, 180.0))),
             osc.quat_axis("y", 90.0),
@@ -120,7 +126,7 @@ def main():
     place_items(scene, sim, rng, args)
     scene.write_data_to_sim()
 
-    for _ in range(args.settle):  # 물리 안정화 + 렌더 누적버퍼 워밍업
+    for _ in range(args.settle):  # 물리 안정화 + render 누적 buffer warmup
         sim.step(render=True)
         scene.update(dt)
 
@@ -133,7 +139,7 @@ def main():
         cam.set_world_poses_from_view(
             eyes=torch.tensor([vec(eye)], device=sim.device), targets=target
         )
-        for _ in range(30):  # 시점 변경 후 누적버퍼 재수렴
+        for _ in range(30):  # 시점 변경 후 누적 buffer 재수렴
             sim.step(render=True)
             scene.update(dt)
         rgb = cam.data.output["rgb"][0].detach().cpu().numpy()

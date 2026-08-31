@@ -1,15 +1,21 @@
 #!/usr/bin/env python
-# [ver] dual_franka_gr00t_eval.py 2026-08-27-r2  (ascii-only console/comments)
+# ======================================
+# File: eval_bimanual.py
+# ======================================
+# Sanghyeok Park, SSL undergraduate
+# Edit 2026-08-31
+# ======================================
+# [ver] eval_bimanual.py 2026-08-27-r2  (ascii-only console/comments) (구명: dual_franka_gr00t_eval.py)
 r"""
-양팔 Franka 탑쌓기 폐루프 평가 하네스 (Step 6).
+양팔 Franka 탑쌓기 폐루프 평가 harness (Step 6).
 
-파인튜닝된 GR00T 체크포인트를 추론 서버에 띄워 두고, 이 스크립트가
-생성기(dual_franka_stack_sm.py)와 같은 씬/랜덤 배치에서 정책을 굴려
-태스크 성공률을 잰다.
+파인튜닝된 GR00T checkpoint 를 추론 server 에 띄운 상태에서, 이 script 가
+생성기(gen_bimanual.py)와 같은 scene/랜덤 배치에서 정책을 굴려
+task 성공률을 측정함.
 
 구조
-    [이 스크립트: Isaac 씬] --obs(3뷰+joint18+지시문)--> [GR00T server]
-                            <--action chunk(16 x 16dim TCP)---
+    [이 script: Isaac scene] --obs(3뷰+joint18+지시문)--> [GR00T server]
+                             <--action chunk(16 x 16dim TCP)---
 
 규약 (학습 데이터와 동일해야 함)
     관측  video.ego_view / video.left_wrist_view / video.right_wrist_view
@@ -17,13 +23,13 @@ r"""
           state.left_arm(1,7) / state.left_gripper(1,2) /
           state.right_arm(1,7) / state.right_gripper(1,2) /
           annotation.human.task_description
-    액션  월드 절대 TCP 목표 16차원 = [Lpos3 Lquat4 Lgrip1 | R 동일]
-          실행은 액션 1개당 물리 6스텝(120Hz -> 20Hz), 매 스텝 렌더
-          (생성기와 동일한 일반 렌더 = train/eval 분포 일치)
-    성공  생성기와 같은 판정: 모든 큐브가 xy 3.5cm 안 + z 2cm 층 간격
+    action  월드 절대 TCP 목표 16차원 = [Lpos3 Lquat4 Lgrip1 | R 동일]
+            실행은 action 1개당 물리 6 step(120Hz -> 20Hz), 매 step render
+            (생성기와 동일한 일반 render = train/eval 분포 일치)
+    성공  생성기와 같은 판정: 모든 cube 가 xy 3.5cm 안 + z 2cm 층 간격
 
-사용 (서버를 먼저 띄운 뒤; run_server_finetuned.sh 참고)
-    CUDA_VISIBLE_DEVICES=1 isaaclab.sh -p dual_franka_gr00t_eval.py \
+사용 (server 를 먼저 띄운 뒤; run_server_finetuned.sh 참고)
+    CUDA_VISIBLE_DEVICES=1 isaaclab.sh -p eval_bimanual.py \
         --headless --episodes-per-n 10 --out-dir /root/project/out/eval_bimanual
 """
 
@@ -75,7 +81,7 @@ g.add_argument("--tag", default="", help="suffix after the timestamp")
 g.add_argument("--cam-eye", default="1.9,0.0,1.3")
 g.add_argument("--cam-target", default="0.45,0.0,0.10")
 
-# 큐브 랜덤 배치 knob: 생성기와 같은 기본값 = 같은 초기상태 분포
+# cube 랜덤 배치 knob: 생성기와 같은 기본값 = 같은 초기상태 분포
 g = parser.add_argument_group("randomization (must match the generator)")
 g.add_argument("--randomize", type=int, default=1)
 g.add_argument("--region", default="0.36,0.60,-0.26,0.26")
@@ -86,7 +92,7 @@ g.add_argument("--reach-margin", type=float, default=0.72)
 g.add_argument("--rand-tries", type=int, default=400)
 g.add_argument("--tool-offset", type=float, default=0.1034)
 
-# ================================================================== 2. 앱 기동
+# ================================================================== 2. app 기동
 from isaaclab.app import AppLauncher  # noqa: E402
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -97,13 +103,13 @@ bs.add_scene_args(parser)
 parser.set_defaults(cam_w=256, cam_h=256)
 AppLauncher.add_app_launcher_args(parser)
 args = parser.parse_args()
-args.enable_cameras = True  # 관측이 카메라이므로 항상 켠다
+args.enable_cameras = True  # 관측이 카메라라 항상 켬
 
 app_launcher = AppLauncher(args)
 simulation_app = app_launcher.app
 
 if args.stamp:
-    # 컨테이너가 UTC 라 KST 로 고정한다 (생성기와 동일)
+    # container 가 UTC 라 KST 로 고정함 (생성기와 동일)
     from datetime import datetime, timedelta, timezone
 
     KST = timezone(timedelta(hours=9))
@@ -132,8 +138,8 @@ from isaaclab.sim import SimulationContext  # noqa: E402
 from isaaclab.utils.math import quat_apply, subtract_frame_transforms  # noqa: E402
 
 # ================================================================== 3. 수학
-# 생성기(dual_franka_stack_sm.py)와 동일한 규약. 생성기는 스크립트라
-# import 할 수 없어 필요한 최소만 복사한다 (변경 시 양쪽 동기화할 것).
+# 생성기(gen_bimanual.py)와 동일한 규약. 생성기는 script 라
+# import 불가 -> 필요한 최소만 복사함 (변경 시 양쪽 동기화 필요).
 GRIP_OPEN, GRIP_CLOSE = 0.04, 0.0
 GRIP_TH = 0.5 * (GRIP_OPEN + GRIP_CLOSE)  # 정책 출력 이진화 임계
 
@@ -154,7 +160,7 @@ def canonical_quat(q):
 
 
 def norm_quat(q):
-    """정책 출력 쿼터니언은 노름이 정확히 1 이 아닐 수 있어 정규화한다."""
+    """정책 출력 quaternion 은 norm 이 정확히 1 이 아닐 수 있어 정규화함."""
     q = np.asarray(q, dtype=np.float64)
     n = float(np.linalg.norm(q))
     if n < 1e-6:
@@ -163,9 +169,9 @@ def norm_quat(q):
 
 
 def instruction_for(n):
-    """개수별 지시문. 변환기(convert_bimanual_lerobot.py)와 동일해야 한다.
+    """개수별 지시문. 변환기(convert_bimanual_lerobot.py)와 동일해야 함.
 
-    n 은 바닥(파란 큐브) 포함 총 개수라 위에 쌓는 것은 n-1 개다.
+    n 은 바닥(파란 cube) 포함 총 개수 -> 위에 쌓는 것은 n-1 개.
     """
     k = n - 1
     unit = "cube" if k == 1 else "cubes"
@@ -173,9 +179,9 @@ def instruction_for(n):
 
 
 def tower_level(cube_xyz):
-    """에피소드 종료 시점의 탑 층수 (바닥 포함). 부분 성공 계측용.
+    """episode 종료 시점의 탑 층수 (바닥 포함). 부분 성공 계측용.
 
-    n>=3 의 0% 가 "1층은 쌓고 무너지는지 / 시작도 못 하는지"를 가른다.
+    n>=3 의 0% 가 "1층은 쌓고 무너지는지 / 시작도 못 하는지"를 가름.
     """
     base = cube_xyz[0]  # cube_1 = 파란 바닥
     lvl = 1
@@ -193,7 +199,7 @@ def tower_level(cube_xyz):
 
 
 def check_success(cube_xyz):
-    """생성기와 동일: 모든 큐브가 한 자리에 층을 이루면 성공."""
+    """생성기와 동일: 모든 cube 가 한 자리에 층을 이루면 성공."""
     cp = cube_xyz[np.argsort(cube_xyz[:, 2])]
     xy_ok = bool(np.abs(cp[:, :2] - cp[0, :2]).max() < 0.035)
     z_ok = bool(np.all(np.diff(cp[:, 2]) > 0.02))
@@ -225,7 +231,7 @@ def save_video(frames, path, fps):
 
 # ================================================================== 4. 배치
 def sample_layout(rng, a, n, base_l, base_r):
-    """생성기와 동일한 큐브 배치 샘플러 (초기상태 분포 일치)."""
+    """생성기와 동일한 cube 배치 sampler (초기상태 분포 일치)."""
     xmin, xmax, ymin, ymax = vec(a.region)
     z = bs.CUBE_HALF
     yr = np.deg2rad(a.yaw_range)
@@ -277,7 +283,7 @@ def sample_layout(rng, a, n, base_l, base_r):
 
 
 def reset_episode(scene, sim, rng, a, n, base_l, base_r, dt):
-    """생성기와 동일한 리셋: 로봇 상태+PD 목표 초기화, 큐브 배치, 워밍업."""
+    """생성기와 동일한 reset: 로봇 상태+PD 목표 초기화, cube 배치, warmup."""
     scene.reset()
     for r in (scene["robot_l"], scene["robot_r"]):
         q = r.data.default_joint_pos.clone()
@@ -303,7 +309,7 @@ def reset_episode(scene, sim, rng, a, n, base_l, base_r, dt):
         obj.write_root_state_to_sim(st)
 
     scene.write_data_to_sim()
-    # 물리 안정화 + temporal 누적버퍼 워밍업 (이전 에피소드 잔상 제거)
+    # 물리 안정화 + temporal 누적 buffer warmup (이전 episode 잔상 제거)
     for _ in range(90):
         sim.step(render=True)
         scene.update(dt)
@@ -348,7 +354,7 @@ class ArmExec:
         return s[:, 0:3], s[:, 3:7]
 
     def aim(self, tcp_pos_w, quat_w):
-        """월드 TCP 목표 -> hand 원점 목표 -> 루트 프레임 IK 명령."""
+        """월드 TCP 목표 -> hand 원점 목표 -> root frame IK 명령."""
         quat_w = canonical_quat(norm_quat(quat_w))
         q = torch.tensor([quat_w], dtype=torch.float32, device=self.dev)
         axis = torch.tensor(
@@ -363,7 +369,7 @@ class ArmExec:
         self.ik.set_command(torch.cat([bp, bq], dim=-1))
 
     def hold_here(self):
-        """명령 공백 금지: 지금 자세를 목표로 세운다 (생성기와 동일한 함정 대응)."""
+        """명령 공백 금지: 지금 자세를 목표로 세움 (생성기와 동일한 함정 대응)."""
         ep, eq = self.eef_pose_w()
         rp, rq = self.root_pose_w()
         bp, bq = subtract_frame_transforms(rp, rq, ep, eq)
@@ -389,12 +395,12 @@ class ArmExec:
         self.robot.set_joint_position_target(g, joint_ids=self.finger_ids)
 
 
-# ================================================================== 6. 관측/액션
+# ================================================================== 6. 관측/action
 def build_payload(scene, cams, text):
-    """학습 데이터(modality.json)와 정확히 같은 키/차원의 관측.
+    """학습 데이터(modality.json)와 정확히 같은 key/차원의 관측.
 
-    3뷰 (2026-08-11): 키 순서 = ego -> left_wrist -> right_wrist
-    (변환기 VIDEO_KEYS / our_configs video_keys 와 동일해야 한다)
+    3뷰 (2026-08-11): key 순서 = ego -> left_wrist -> right_wrist
+    (변환기 VIDEO_KEYS / our_configs video_keys 와 동일해야 함)
     """
     jl = scene["robot_l"].data.joint_pos[0].cpu().numpy().astype(np.float64)
     jr = scene["robot_r"].data.joint_pos[0].cpu().numpy().astype(np.float64)
@@ -411,7 +417,7 @@ def build_payload(scene, cams, text):
 
 
 def parse_chunk(chunk):
-    """서버 응답 -> (T,) 시퀀스 6개. T = 모델 호라이즌(16)."""
+    """server 응답 -> (T,) sequence 6개. T = model horizon(16)."""
     lp = np.asarray(chunk["action.left_eef_pos"]).reshape(-1, 3)
     lq = np.asarray(chunk["action.left_eef_quat"]).reshape(-1, 4)
     lg = np.asarray(chunk["action.left_gripper"]).reshape(-1)
@@ -477,7 +483,7 @@ def write_results(out_dir, a, rows):
         )
 
 
-# ================================================================== 7. 메인
+# ================================================================== 7. main
 def main():
     torch.manual_seed(args.seed)
     rng = np.random.default_rng(args.seed)
@@ -539,7 +545,7 @@ def main():
             for t in range(n_exec):
                 arm_l.command(lp[t], lq[t], lg[t])
                 arm_r.command(rp[t], rq[t], rg[t])
-                for _ in range(6):  # 액션 1개 = 물리 6스텝 (20Hz), 매 스텝 렌더
+                for _ in range(6):  # action 1개 = 물리 6 step (20Hz), 매 step render
                     arm_l.apply()
                     arm_r.apply()
                     scene.write_data_to_sim()
@@ -547,7 +553,7 @@ def main():
                     scene.update(dt)
                 ctrl += 1
                 if args.video_dir:
-                    # 리뷰 영상은 모델이 실제로 본 3뷰를 가로로 붙여 저장
+                    # review 영상은 model 이 실제로 본 3뷰를 가로로 붙여 저장
                     # (ego | left_wrist | right_wrist -- 파지 진단의 핵심)
                     frames.append(
                         np.concatenate([grab_rgb(c) for c in cams], axis=1)
@@ -574,7 +580,7 @@ def main():
                 20,
             )
         if args.out_dir:
-            write_results(args.out_dir, args, rows)  # 매 에피소드 갱신 (중단 안전)
+            write_results(args.out_dir, args, rows)  # 매 episode 갱신 (중단 안전)
 
     n_ok = sum(r["success"] for r in rows)
     by_n = {}
@@ -600,8 +606,8 @@ if __name__ == "__main__":
         sys.stdout.flush()
         os._exit(1)
     finally:
-        # simulation_app.close() 는 헤드리스에서 반환하지 않는 경우가 있어
-        # 결과를 디스크에 쓴 뒤 바로 프로세스를 끝낸다 (좀비 방지)
+        # simulation_app.close() 는 headless 에서 반환하지 않는 경우가 있어
+        # 결과를 disk 에 쓴 뒤 바로 process 를 끝냄 (zombie 방지)
         sys.stdout.flush()
         sys.stderr.flush()
         os._exit(0)
