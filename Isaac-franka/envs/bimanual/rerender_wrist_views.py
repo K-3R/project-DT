@@ -39,11 +39,24 @@ import shutil
 import sys
 import traceback
 
-# ================================================================== 1. 인자
+# 1. arguments (argparse) ------------------------------------------------
 parser = argparse.ArgumentParser(description="add wrist camera views to seed HDF5")
-parser.add_argument("--input", required=True, help="source seed.hdf5")
-parser.add_argument("--out", default="", help="output hdf5 (default: <input dir>/seed_3view.hdf5)")
-parser.add_argument("--demos", type=int, default=0, help="limit demos (0 = all)")
+parser.add_argument(
+    "--input",
+    required=True,
+    help="source seed.hdf5",
+)
+parser.add_argument(
+    "--out",
+    default="",
+    help="output hdf5 (default: <input dir>/seed_3view.hdf5)",
+)
+parser.add_argument(
+    "--demos",
+    type=int,
+    default=0,
+    help="limit demos (0 = all)",
+)
 parser.add_argument(
     "--renders-per-frame",
     type=int,
@@ -57,24 +70,51 @@ parser.add_argument(
     default=15,
     help="extra renders after each demo reset (flush stale history)",
 )
-parser.add_argument("--preview", type=int, default=0, help="dump N preview frames and exit")
-parser.add_argument("--preview-dir", default="", help="dir for preview PNGs")
-parser.add_argument("--tool-offset", type=float, default=0.1034)
+parser.add_argument(
+    "--preview",
+    type=int,
+    default=0,
+    help="dump N preview frames and exit",
+)
+parser.add_argument(
+    "--preview-dir",
+    default="",
+    help="dir for preview PNGs",
+)
+parser.add_argument(
+    "--tool-offset",
+    type=float,
+    default=0.1034,
+)
 
-# ================================================================== 2. app 기동
+# 2. IsaacLab 시작 ---------------------------------------------------------
 from isaaclab.app import AppLauncher  # noqa: E402
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import bimanual_scene as bs  # noqa: E402
 
+# bs에서도 parser로 인자를 받으므로
+# 인자를 넘겨줘서 등록을 해주어야 한다
 bs.add_scene_args(parser)
+
+# 학습 카메라 256x256
 parser.set_defaults(cam_w=256, cam_h=256)
+
+# AppLauncher 에서도 parser를 받아서 등록을 해주어야 한다
 AppLauncher.add_app_launcher_args(parser)
+
+# arg를 받고 파싱
 args = parser.parse_args()
+
+# 해당 설정은 강제로 덮어쓴다
 args.enable_cameras = True
 
+# 앱을 부팅한다
 app_launcher = AppLauncher(args)
 simulation_app = app_launcher.app
+
+
+# 앱이 부팅 된 다음에 import 해야 함 (IsaacLab 의 scene import 규약)
 
 import h5py  # noqa: E402
 import numpy as np  # noqa: E402

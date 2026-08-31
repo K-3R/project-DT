@@ -139,12 +139,34 @@ def check_file(path, src_path, sample_demos, out_dir, make_video):
 
 def main():
     p = argparse.ArgumentParser(description="verify rerendered 3-view HDF5 files")
-    p.add_argument("--input-root", required=True)
-    p.add_argument("--hdf5-name", default="seed_3view.hdf5")
-    p.add_argument("--src-name", default="seed.hdf5")
-    p.add_argument("--out", default="./check_3view", help="dir for sample PNG/mp4")
-    p.add_argument("--sample-demos", type=int, default=3, help="demos to sample per file")
-    p.add_argument("--video", action="store_true", help="also write one mp4 per file")
+    p.add_argument(
+        "--input-root",
+        required=True,
+    )
+    p.add_argument(
+        "--hdf5-name",
+        default="seed_3view.hdf5",
+    )
+    p.add_argument(
+        "--src-name",
+        default="seed.hdf5",
+    )
+    p.add_argument(
+        "--out",
+        default="./check_3view",
+        help="dir for sample PNG/mp4",
+    )
+    p.add_argument(
+        "--sample-demos",
+        type=int,
+        default=3,
+        help="demos to sample per file",
+    )
+    p.add_argument(
+        "--video",
+        action="store_true",
+        help="also write one mp4 per file",
+    )
     a = p.parse_args()
 
     files = sorted(
