@@ -8,6 +8,10 @@ It also contains the full flow for the non-scanned counterpart: the same
 task built from stock Isaac Sim assets (monitor/keyboard/mouse etc.), with
 the same VLA policy training/evaluation.
 
+![flow](figures/flow.png)
+
+![eval](figures/eval.gif)
+
 ## 1️⃣ Full Flow
 
 ```
