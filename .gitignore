@@ -21,3 +21,5 @@ __pycache__/
 
 # runtime outputs
 out/
+
+_tmp.sh
