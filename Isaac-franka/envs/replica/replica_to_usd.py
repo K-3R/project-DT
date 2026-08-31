@@ -210,8 +210,16 @@ def pick_up_axis(verts, mode):
 
 def main():
     p = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    p.add_argument("--ply", required=True, help="input mesh.ply (binary little endian)")
-    p.add_argument("--out", required=True, help="output .usd path")
+    p.add_argument(
+        "--ply",
+        required=True,
+        help="input mesh.ply (binary little endian)",
+    )
+    p.add_argument(
+        "--out",
+        required=True,
+        help="output .usd path",
+    )
     # Replica 는 z-up 확정 (repo issue #26, 저자: gravity = -z). ScanNet 등
     # 다른 source 를 쓸 때만 auto/y 를 고려할 것 (auto 는 bbox 최단축 heuristic).
     p.add_argument(
@@ -261,6 +269,7 @@ def main():
     if not os.environ.get("CUDA_VISIBLE_DEVICES"):
         sys.exit("[replica2usd] ERROR: set CUDA_VISIBLE_DEVICES explicitly (shared server)")
 
+    # 1. binary little endian ply parsing (외부 의존성 없이 numpy 만 사용)
     print(f"[replica2usd] read {a.ply}")
     verts, colors, counts, indices = read_ply(a.ply)
     n_v, n_f = verts.shape[0], counts.shape[0]
@@ -275,13 +284,13 @@ def main():
     if indices.max() >= n_v or indices.min() < 0:
         raise SystemExit("ERROR: face index out of range")
 
-    # 업축 정렬: y-up 이면 +90 deg about X = (x, y, z) -> (x, -z, y)
+    # 2. 업축 정렬: y-up 이면 +90 deg about X = (x, y, z) -> (x, -z, y)
     up = pick_up_axis(verts, a.up)
     if up == "y":
         verts = np.stack([verts[:, 0], -verts[:, 2], verts[:, 1]], axis=1)
         print("[replica2usd] rotated y-up -> z-up")
 
-    # 재원점: xy 는 bbox 중심, z 는 바닥 백분위
+    # 3. 재원점: xy 는 bbox 중심, z 는 바닥 백분위
     lo, hi = verts.min(axis=0), verts.max(axis=0)
     shift = np.zeros(3)
     if not a.no_recenter:
@@ -308,7 +317,7 @@ def main():
     UsdGeom.SetStageUpAxis(stage, UsdGeom.Tokens.z)
     UsdGeom.SetStageMetersPerUnit(stage, 1.0)
 
-    # 2단 구조: 최상위 /Bg 는 비워 두고 (Isaac Lab 이 spawn 변환으로 덮어씀)
+    # 5. 2단 구조: 최상위 /Bg 는 비워 두고 (Isaac Lab 이 spawn 변환으로 덮어씀)
     # geometry 는 /Bg/Geom 아래에 둠. 정렬은 좌표에 이미 구움.
     top = UsdGeom.Xform.Define(stage, "/Bg")
     stage.SetDefaultPrim(top.GetPrim())
@@ -329,6 +338,7 @@ def main():
         )
     )
 
+    # 4. vertex color -> displayColor primvar + UsdPreviewSurface material
     if colors is not None:
         pv = UsdGeom.PrimvarsAPI(mesh.GetPrim()).CreatePrimvar(
             "displayColor", Sdf.ValueTypeNames.Color3fArray, UsdGeom.Tokens.vertex
@@ -360,6 +370,7 @@ def main():
             )
             UsdShade.MaterialBindingAPI.Apply(mesh.GetPrim()).Bind(mat)
 
+    # 6. 선택: 정적 삼각 mesh 충돌 (--physics static)
     if a.physics == "static":
         UsdPhysics.CollisionAPI.Apply(mesh.GetPrim())
         mapi = UsdPhysics.MeshCollisionAPI.Apply(mesh.GetPrim())

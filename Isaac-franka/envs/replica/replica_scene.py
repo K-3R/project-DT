@@ -33,7 +33,7 @@ PEDESTAL_COLOR = (0.30, 0.30, 0.32)
 LEG_COLOR = (0.25, 0.25, 0.26)
 
 
-# ---- helper -------------------------------------------------------------
+# 1. helper -----------------------------------------------------------------
 def vec(s):
     return tuple(float(x) for x in s.split(","))
 
@@ -66,7 +66,9 @@ def rot2d(x, y, deg):
     return (x * c - y * s, x * s + y * c)
 
 
+# 2. arguments (argparse) ------------------------------------------------
 def add_scene_args(p):
+    # argument groups (argparse)
     g = p.add_argument_group("replica scene")
     g.add_argument(
         "--bg-usd",
@@ -95,10 +97,26 @@ def add_scene_args(p):
         help="dome (ambient) intensity. Only fills through door/window holes",
     )
 
+    # argument groups (argparse)
     g = p.add_argument_group("robots")
-    g.add_argument("--robots", type=int, default=1, help="0: scan only")
-    g.add_argument("--base-x", type=float, default=0.0, help="rig center x in the room")
-    g.add_argument("--base-y", type=float, default=0.0, help="rig center y in the room")
+    g.add_argument(
+        "--robots",
+        type=int,
+        default=1,
+        help="0: scan only",
+    )
+    g.add_argument(
+        "--base-x",
+        type=float,
+        default=0.0,
+        help="rig center x in the room",
+    )
+    g.add_argument(
+        "--base-y",
+        type=float,
+        default=0.0,
+        help="rig center y in the room",
+    )
     g.add_argument(
         "--base-yaw",
         type=float,
@@ -123,10 +141,23 @@ def add_scene_args(p):
         "use -0.70 with desk assets whose TOP is z=0 (scan take6)",
     )
 
+    # argument groups (argparse)
     g = p.add_argument_group("render")
-    g.add_argument("--num-envs", type=int, default=1)
-    g.add_argument("--cam-w", type=int, default=1280)
-    g.add_argument("--cam-h", type=int, default=720)
+    g.add_argument(
+        "--num-envs",
+        type=int,
+        default=1,
+    )
+    g.add_argument(
+        "--cam-w",
+        type=int,
+        default=1280,
+    )
+    g.add_argument(
+        "--cam-h",
+        type=int,
+        default=720,
+    )
     g.add_argument(
         "--cam-fov",
         type=float,
@@ -157,7 +188,7 @@ def room_bbox(usd_path):
     return float(hi[0]), float(hi[1]), float(hi[2])
 
 
-# ---- scene 조립 ----------------------------------------------------------
+# 3. scene 조립 ---------------------------------------------------------
 def build(a, with_camera=True):
     """scene cfg 를 만듦. AppLauncher 기동 이후에만 호출할 것."""
     import isaaclab.sim as sim_utils
@@ -175,7 +206,7 @@ def build(a, with_camera=True):
 
     cfg = ReplicaSceneCfg(num_envs=a.num_envs, env_spacing=8.0)
 
-    # ---- 스캔 방 (가구 포함 융합 mesh, 시각 전용) ------------------------
+    # 3-1. 스캔 방 (가구 포함 융합 mesh, 시각 전용)
     # 변환기가 정렬을 좌표에 구웠으므로 원점에 그대로 둠
     cfg.bg_scan = AssetBaseCfg(
         prim_path="{ENV_REGEX_NS}/BgScan",
@@ -183,7 +214,7 @@ def build(a, with_camera=True):
         spawn=sim_utils.UsdFileCfg(usd_path=a.bg_usd),
     )
 
-    # ---- 실내 조명 -------------------------------------------------------
+    # 3-2. 실내 조명
     # 닫힌 스캔 mesh(벽+천장)가 dome light 를 막아 방 안이 어두움 (실측).
     # 천장 바로 아래에 아래를 비추는 disk light 5개를 심음
     hx, hy, hh = room_bbox(a.bg_usd)
@@ -230,7 +261,7 @@ def build(a, with_camera=True):
             ),
         )
 
-    # ---- 로봇 (받침대 위 양팔, office 와 동일 rig) -----------------------
+    # 3-3. 로봇 (받침대 위 양팔, office 와 동일 rig)
     if a.robots:
         from isaaclab_assets.robots.franka import FRANKA_PANDA_HIGH_PD_CFG
 
@@ -311,7 +342,7 @@ def build(a, with_camera=True):
             history_length=6,
         )
 
-    # ---- 카메라 ---------------------------------------------------------
+    # 3-4. 카메라
     if with_camera:
         cfg.scene_cam = CameraCfg(
             prim_path="{ENV_REGEX_NS}/scene_cam",
@@ -330,6 +361,7 @@ def build(a, with_camera=True):
             ),
         )
 
+    # 3-5. scene 요약 로그
     print(
         f"[scene] bg={os.path.basename(a.bg_usd)} room=({hx:.2f},{hy:.2f},{hh:.2f}) "
         f"robots={bool(a.robots)} base=({a.base_x:.2f},{a.base_y:.2f},{a.base_z:.2f}) "
