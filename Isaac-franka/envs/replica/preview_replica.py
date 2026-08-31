@@ -30,9 +30,18 @@ import os
 import sys
 import traceback
 
+# 1. arguments (argparse) ------------------------------------------------
 parser = argparse.ArgumentParser(description="render previews of the replica scene")
-parser.add_argument("--out", default="/root/project/out/replica_preview")
-parser.add_argument("--settle", type=int, default=60, help="physics steps before shot")
+parser.add_argument(
+    "--out",
+    default="/root/project/out/replica_preview",
+)
+parser.add_argument(
+    "--settle",
+    type=int,
+    default=60,
+    help="physics steps before shot",
+)
 parser.add_argument(
     "--views",
     default="",

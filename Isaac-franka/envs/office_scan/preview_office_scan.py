@@ -31,11 +31,24 @@ import os
 import sys
 import traceback
 
-parser = argparse.ArgumentParser(description="render a preview of the office desk scene")
-parser.add_argument("--out", default="/root/project/out/office_preview")
-parser.add_argument("--settle", type=int, default=150, help="physics steps before shot")
+# 1. arguments (argparse) ------------------------------------------------
+parser = argparse.ArgumentParser(
+    description="render a preview of the office desk scene"
+)
 parser.add_argument(
-    "--target", default="", help="camera look-at point; empty = office_scan_scene.EGO_TARGET"
+    "--out",
+    default="/root/project/out/office_preview",
+)
+parser.add_argument(
+    "--settle",
+    type=int,
+    default=150,
+    help="physics steps before shot",
+)
+parser.add_argument(
+    "--target",
+    default="",
+    help="camera look-at point; empty = office_scan_scene.EGO_TARGET",
 )
 parser.add_argument(
     "--views",
@@ -51,14 +64,22 @@ parser.add_argument(
     ),
     help="camera eye positions, pipe separated",
 )
-parser.add_argument("--seed", type=int, default=0)
+parser.add_argument(
+    "--seed",
+    type=int,
+    default=0,
+)
 parser.add_argument(
     "--item-region",
     default="0.00,0.28,-0.35,0.60",
     help="xmin,xmax,ymin,ymax for scattered markers; keeps clear of the "
     "keyboard row and stays inside both arms' reach",
 )
-parser.add_argument("--min-sep", type=float, default=0.10)
+parser.add_argument(
+    "--min-sep",
+    type=float,
+    default=0.10,
+)
 
 from isaaclab.app import AppLauncher  # noqa: E402
 
