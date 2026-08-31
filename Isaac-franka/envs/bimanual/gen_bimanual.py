@@ -63,12 +63,13 @@ import os
 import sys
 import traceback
 
-# ================================================================== 1. 인자
+# 1. arguments (argparse) ------------------------------------------------
 parser = argparse.ArgumentParser(
     description="Bimanual Franka cube-tower seed trajectory generator "
     "(see module docstring for details)",
 )
 
+# argument groups (argparse)
 g = parser.add_argument_group("run")
 g.add_argument(
     "--demos",
@@ -82,8 +83,13 @@ g.add_argument(
     default=1400,
     help="physics step budget PER CUBE; actual limit = this x cubes to stack",
 )
-g.add_argument("--seed", type=int, default=0)
+g.add_argument(
+    "--seed",
+    type=int,
+    default=0,
+)
 
+# argument groups (argparse)
 g = parser.add_argument_group("recording")
 g.add_argument(
     "--record-every",
@@ -104,6 +110,7 @@ g.add_argument(
     help="net contact force threshold [N] on link2-7; above = episode failed",
 )
 
+# argument groups (argparse)
 g = parser.add_argument_group("output")
 g.add_argument(
     "--out",
@@ -135,6 +142,7 @@ g.add_argument(
     default="0.45,0.0,0.10",
 )
 
+# argument groups (argparse)
 g = parser.add_argument_group("randomization")
 g.add_argument(
     "--randomize",
@@ -185,6 +193,7 @@ g.add_argument(
     help="sampling retries",
 )
 
+# argument groups (argparse)
 g = parser.add_argument_group("motion")
 g.add_argument(
     "--hover",
@@ -249,7 +258,7 @@ g.add_argument(
     "(safety net when contact blocks the reach check; 0 = off)",
 )
 
-# ================================================================== 2. app 기동
+# 2. IsaacLab 시작 ---------------------------------------------------------
 from isaaclab.app import AppLauncher  # noqa: E402
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -257,14 +266,24 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 # (app 기동 전에는 omni.client 가 없어 import 자체가 실패함)
 import bimanual_scene as bs  # noqa: E402
 
+# bs에서도 parser로 인자를 받으므로
+# 인자를 넘겨줘서 등록을 해주어야 한다
 bs.add_scene_args(parser)
+
 # 학습 카메라는 256x256 (GR00T 전처리 crop0.95->resize224 에 맞춘 값)
 parser.set_defaults(cam_w=256, cam_h=256)
+
+# AppLauncher 에서도 parser를 받아서 등록을 해주어야 한다
 AppLauncher.add_app_launcher_args(parser)
+
+# arg를 받고 파싱
 args = parser.parse_args()
+
+# 해당 설정은 강제로 덮어쓴다
 # 학습 데이터에 카메라 frame 이 반드시 들어가므로 항상 켬
 args.enable_cameras = True
 
+# 앱을 부팅한다
 app_launcher = AppLauncher(args)
 simulation_app = app_launcher.app
 
@@ -289,6 +308,9 @@ if args.stamp:
     if args.out:
         print(f"[run] hdf5  -> {args.out}")
 
+
+# 앱이 부팅 된 다음에 import 해야 함 (IsaacLab 의 scene import 규약)
+
 import numpy as np  # noqa: E402
 import torch  # noqa: E402
 
@@ -302,7 +324,7 @@ from isaaclab.scene import InteractiveScene  # noqa: E402
 from isaaclab.sim import SimulationContext  # noqa: E402
 from isaaclab.utils.math import quat_apply, subtract_frame_transforms  # noqa: E402
 
-# ================================================================== 3. 수학
+# 3. 수학 ------------------------------------------------------------------
 DOWN_QUAT = (0.0, 1.0, 0.0, 0.0)  # x축 180도 회전. gripper 가 아래를 향함
 GRIP_OPEN, GRIP_CLOSE = 0.04, 0.0
 
@@ -355,7 +377,7 @@ def grasp_quat(yaw):
     return canonical_quat(quat_mul(quat_z(y), DOWN_QUAT))
 
 
-# ================================================================== 4. 배치
+# 4. 배치 ------------------------------------------------------------------
 def sample_layout(rng, a, n, base_l, base_r):
     """구역 안에 cube n 개를 뿌림. cube_1 이 탑의 바닥.
 
@@ -420,7 +442,7 @@ def sample_layout(rng, a, n, base_l, base_r):
     return pos, {k: 0.0 for k in pos}
 
 
-# ================================================================== 5. 조율
+# 5. 조율 ------------------------------------------------------------------
 class Stack:
     """쌓는 자리 하나를 두 팔이 나눠 쓰기 위한 공용 상태.
 
@@ -454,7 +476,7 @@ class Stack:
             self.level += 1
 
 
-# ================================================================== 6. 팔
+# 6. 팔 -------------------------------------------------------------------
 (
     REST,
     ABOVE_PICK,
@@ -739,7 +761,7 @@ class Arm:
                 self._to(REST if self.queue else FINISHED)
 
 
-# ================================================================== 7. 기록
+# 7. 기록 (Recorder + HDF5) ------------------------------------------------
 class Recorder:
     """한 episode 의 action, 관측(카메라 포함), subtask 경계를 20Hz 로 모음."""
 
@@ -971,7 +993,7 @@ def write_meta(meta_dir, a, stats, n_ok):
         )
 
 
-# ================================================================== 8. episode
+# 8. episode (물리 루프 한 판) -------------------------------------------------
 def reset_episode(scene, sim, rng, a, n, base_l, base_r, dt):
     """로봇을 초기 자세로, cube 를 구역에 배치하고 카메라를 warmup 함."""
     scene.reset()
@@ -1108,7 +1130,7 @@ def run_episode(scene, sim, cam, a, ep, n, base_l, base_r, rng, dt):
     return rec, ok, step, collided
 
 
-# ================================================================== 9. main
+# 9. main (episode 반복 + 집계) ----------------------------------------------
 def main():
     torch.manual_seed(args.seed)
     rng = np.random.default_rng(args.seed)

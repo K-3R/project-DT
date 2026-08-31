@@ -50,15 +50,29 @@ import os
 import sys
 import traceback
 
-# ================================================================== 1. 인자
+# 1. arguments (argparse) ------------------------------------------------
 parser = argparse.ArgumentParser(
     description="scripted seed-trajectory generator: markers into pencil holder"
 )
 
+# argument groups (argparse)
 g = parser.add_argument_group("run")
-g.add_argument("--demos", type=int, default=5, help="number of attempts")
-g.add_argument("--num-markers", default="1,3", help="marker count range min,max")
-g.add_argument("--seed", type=int, default=0)
+g.add_argument(
+    "--demos",
+    type=int,
+    default=5,
+    help="number of attempts",
+)
+g.add_argument(
+    "--num-markers",
+    default="1,3",
+    help="marker count range min,max",
+)
+g.add_argument(
+    "--seed",
+    type=int,
+    default=0,
+)
 g.add_argument(
     "--steps-per-marker",
     type=int,
@@ -84,17 +98,31 @@ g.add_argument(
     help="net contact force threshold [N] on link2-7; above = episode failed",
 )
 
+# argument groups (argparse)
 g = parser.add_argument_group("output")
-g.add_argument("--out", default="", help="HDF5 output path (empty = no save)")
-g.add_argument("--video-dir", default="", help="per-episode mp4 dir (empty = off)")
+g.add_argument(
+    "--out",
+    default="",
+    help="HDF5 output path (empty = no save)",
+)
+g.add_argument(
+    "--video-dir",
+    default="",
+    help="per-episode mp4 dir (empty = off)",
+)
 g.add_argument(
     "--stamp",
     type=int,
     default=1,
     help="append run timestamp to output paths so reruns never overwrite",
 )
-g.add_argument("--tag", default="", help="suffix after the timestamp")
+g.add_argument(
+    "--tag",
+    default="",
+    help="suffix after the timestamp",
+)
 
+# argument groups (argparse)
 g = parser.add_argument_group("marker layout")
 g.add_argument(
     "--region",
@@ -104,11 +132,26 @@ g.add_argument(
     "(the wrist sits ~16cm above the TCP, shrinking usable radius) and "
     "the ego_view strip between the robots stays fully visible",
 )
-g.add_argument("--min-sep", type=float, default=0.11, help="min marker spacing [m]")
-g.add_argument("--rand-tries", type=int, default=400, help="sampling retries")
+g.add_argument(
+    "--min-sep",
+    type=float,
+    default=0.11,
+    help="min marker spacing [m]",
+)
+g.add_argument(
+    "--rand-tries",
+    type=int,
+    default=400,
+    help="sampling retries",
+)
 
 g = parser.add_argument_group("motion")
-g.add_argument("--hover", type=float, default=0.10, help="approach height [m]")
+g.add_argument(
+    "--hover",
+    type=float,
+    default=0.10,
+    help="approach height [m]",
+)
 g.add_argument(
     "--grasp-z",
     type=float,
@@ -165,7 +208,12 @@ g.add_argument(
     help="markers with y above this go to the right arm (handover), "
     "the rest to the left arm (desk split in half)",
 )
-g.add_argument("--pos-tol", type=float, default=0.008, help="reach tolerance [m]")
+g.add_argument(
+    "--pos-tol",
+    type=float,
+    default=0.008,
+    help="reach tolerance [m]",
+)
 g.add_argument(
     "--ang-tol",
     type=float,
@@ -174,30 +222,51 @@ g.add_argument(
     "'completed' instantly (position unchanged) and the descent started "
     "while the marker was still swinging to vertical",
 )
-g.add_argument("--dwell", type=int, default=25, help="settle steps at each waypoint")
+g.add_argument(
+    "--dwell",
+    type=int,
+    default=25,
+    help="settle steps at each waypoint",
+)
 g.add_argument(
     "--state-timeout",
     type=int,
     default=300,
     help="force-advance after this many steps in one primitive (0 = off)",
 )
-g.add_argument("--tool-offset", type=float, default=0.1034)
+g.add_argument(
+    "--tool-offset",
+    type=float,
+    default=0.1034,
+)
 
-# ================================================================== 2. app 기동
+# 2. IsaacLab 시작
 from isaaclab.app import AppLauncher  # noqa: E402
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import office_scan_scene as osc  # noqa: E402
 
+# osc에서도 parser로 인자를 받으므로
+# 인자를 넘겨줘서 등록을 해주어야 한다
 osc.add_scene_args(parser)
-# 학습 카메라 256x256, 로봇/연필꽂이 항상 켬. 마커 수는 scene 에 최대로 만들어
-# 두고 episode 마다 필요한 만큼만 배치함 (안 쓰는 것은 PARK).
+
+# 학습 카메라 256x256
+# 로봇/연필꽂이 항상 켬
+# 마커 수는 scene 에 최대로 만든다 (4개 (가능한 색상이 4개라 일단 4개로 둠))
+# episode 마다 필요한 만큼만 책상 위에 랜덤 배치함 (안 쓰는 것은 PARK)
 parser.set_defaults(cam_w=256, cam_h=256, robots=1, items=osc.MAX_ITEMS, holder=1)
+
+# AppLauncher 에서도 parser를 받아서 등록을 해주어야 한다
 AppLauncher.add_app_launcher_args(parser)
+
+# arg를 받고 파싱
 args = parser.parse_args()
+
+# 해당 설정은 강제로 덮어쓴다
 args.enable_cameras = True
 args.robots = 1
 
+# 앱을 부팅한다
 app_launcher = AppLauncher(args)
 simulation_app = app_launcher.app
 
@@ -219,6 +288,9 @@ if args.stamp:
     if args.out:
         print(f"[run] hdf5 -> {args.out}")
 
+
+# 앱이 부팅 된 다음에 import 해야 함 (IsaacLab 의 scene import 규약)
+
 import numpy as np  # noqa: E402
 import torch  # noqa: E402
 
@@ -237,7 +309,7 @@ from isaaclab.utils.math import (  # noqa: E402
     subtract_frame_transforms,
 )
 
-# ================================================================== 3. 수학
+# 3. 수학 (손목 자세 사전 + 판정) --------------------------------------------------
 # 주의 (1차 실행에서 잡은 함정): 이 scene 의 로봇 base 는 z 축 180도로 돌아
 # -x(책상)를 봄. 1번 환경의 DOWN_QUAT(Rx180, hand-x=+x)를 그대로 쓰면
 # 손목이 base 정면 기준 180도 비틀린 자세를 요구받아 관절한계로 도달
@@ -350,7 +422,7 @@ def save_video(frames, path, fps):
         print(f"[vid] mp4 save failed: {path} ({e})")
 
 
-# ================================================================== 4. 팔
+# 4. Arm (한 팔의 IK + gripper) ---------------------------------------------
 class Arm:
     """한 팔의 IK 와 gripper (1번 환경 생성기에서 검증된 구현)."""
 
@@ -468,7 +540,7 @@ class Arm:
         self.robot.set_joint_position_target(g, joint_ids=self.finger_ids)
 
 
-# ================================================================== 5. program
+# 5. program (상태기계: primitive 목록 조립) -------------------------------------
 class Program:
     """순차 primitive 실행기.
 
@@ -694,7 +766,7 @@ def build_program(a, scene, arm_l, arm_r, order, bases):
     return prog, bb
 
 
-# ================================================================== 6. 기록
+# 6. 기록 (Recorder + HDF5) ------------------------------------------------
 class Recorder:
     # 카메라 key 이름은 변환기(convert_bimanual_lerobot.py VIDEO_KEYS)와
     # 정확히 일치해야 함. 순서 = 카메라 정체성 (GR00T 는 ID embedding 없음)
@@ -854,7 +926,7 @@ def write_meta(meta_dir, a, stats, n_ok):
         )
 
 
-# ================================================================== 7. 배치/reset
+# 7. 배치/reset ------------------------------------------------------------
 # 마커를 뿌리면 안 되는 자리 (키보드/마우스패드/연필꽂이 주변, 여유 포함)
 def forbidden_rects(a):
     hx, hy = vec(a.holder_xy)
@@ -940,7 +1012,7 @@ def reset_episode(scene, sim, rng, a, n, dt):
         scene.update(dt)
 
 
-# ================================================================== 8. episode
+# 8. episode (물리 루프 한 판) -------------------------------------------------
 class HdWriters:
     """showcase HD 영상 streaming 기록 (buffering 하면 수 GB 라 바로 파일에 씀)."""
 
@@ -1047,7 +1119,7 @@ def run_episode(scene, sim, cam, wcam_l, wcam_r, a, ep, n, bases, rng, dt, hd_ca
     return rec, ok, step, collided
 
 
-# ================================================================== 9. main
+# 9. main (episode 반복 + 집계) ----------------------------------------------
 def main():
     torch.manual_seed(args.seed)
     rng = np.random.default_rng(args.seed)
