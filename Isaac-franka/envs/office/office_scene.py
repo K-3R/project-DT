@@ -134,12 +134,13 @@ HOLDER_COLOR = (0.20, 0.26, 0.34)
 # 실물 펜 asset(SM_Pen)은 높이 1.2cm 라 눕힌 것을 집으면 손끝이 상판에 닿음
 # (1번 환경에서 검증된 안전 파지 높이는 2.5cm). 지름 2.6cm 마커로 제작.
 # 길이 14cm 라 양 끝을 각각 잡을 수 있어 공중 handover 에도 맞음.
+# 안 쓰는 마커를 치워두는 자리 (리치/화각 밖. 바닥으로 떨어져 화면에서 사라짐)
 PARK = (2.5, 2.5, 0.5)
 MARKER_R = 0.013
 MARKER_SQ = 0.024  # 각단면(box) mode 의 한 변. 면 파지라 원기둥보다 훨씬 안정
 MARKER_L = 0.140
 # build() 에서 --marker-shape 값으로 설정됨 (item_half_h 등이 참조)
-MARKER_SHAPE = "cyl"
+MARKER_SHAPE = "box"
 MARKER_COLORS = [
     (0.80, 0.15, 0.15),
     (0.15, 0.35, 0.80),
@@ -149,33 +150,55 @@ MARKER_COLORS = [
 MAX_ITEMS = len(MARKER_COLORS)
 
 
+# 0. Marker 배치 helper -------------------------------------------------
 def item_name(i):
+    """marker1, marker2, ... marker primitive 이름 반환"""
+    # item_name(1) -> marker1
     return f"marker{i}"
 
 
 def item_half_h(i):
     """눕혀 놓았을 때의 중심 높이 [m]. usd mode 도 충돌체는 box 라 동일."""
-    h = MARKER_R if MARKER_SHAPE == "cyl" else MARKER_SQ / 2.0
+    # 단면 기준으로 생각했을때의 마커의 중심 높이
+    # 마커 두께 MARKER_SQ / 2 -> 중심 높이
+
+    if MARKER_SHAPE == "cyl":
+        h = MARKER_R
+    else:
+        h = MARKER_SQ / 2.0
+
+    # 마커를 배치할때 상판과 겹친 채 시작하는 것을 막기 위해 0.3 [mm] 올려서 배치
     return h + 0.0003
 
 
 def item_grasp_w(i):
     """gripper 가 무는 폭 [m]. 8cm 초과 금지. usd = box 충돌체."""
-    return 2.0 * MARKER_R if MARKER_SHAPE == "cyl" else MARKER_SQ
+    # 마커 두께 MARKER_SQ
+
+    if MARKER_SHAPE == "cyl":
+        return 2.0 * MARKER_R
+    else:
+        return MARKER_SQ
 
 
-# ---- 헬퍼 ---------------------------------------------------------------
+# 1. helper -------------------------------------------------
 def vec(s):
+    """cli로 받는 문자열 설정을 튜플로 변환"""
+    # vec("0.16,-0.36") -> (0.16, -0.36)
     return tuple(float(x) for x in s.split(","))
 
 
 def prop_usd(name):
     """props/ 에 추출해 둔 USD 경로. 없으면 None (primitive 로 대체)."""
+    # props/ 에 extract_props.py 로 뽑아둔 USD 가 있으면 경로를, 없으면 None
     p = os.path.join(PROPS_DIR, f"{name}.usd")
     return p if os.path.exists(p) else None
 
 
 def quat_mul(q1, q2):
+    """두 quaternion 곱 (w,x,y,z) 반환"""
+    # q1*q2 = q2 를 먼저 적용하고 q1 을 나중에 적용 (world 기준. 왼쪽이 나중)
+    # e.g. quat_mul(quat_axis("z", yaw), quat_axis("y", 90)) = 눕힌 뒤 yaw 회전
     w1, x1, y1, z1 = q1
     w2, x2, y2, z2 = q2
     return (
@@ -188,6 +211,8 @@ def quat_mul(q1, q2):
 
 def quat_axis(axis, deg):
     """x/y/z 축 회전 quaternion (w,x,y,z)."""
+    # e.g. yaw(z)으로 deg 만큼의 회전 -> quaternion으로 반환함
+
     import math
 
     h = math.radians(deg) / 2.0
@@ -199,13 +224,28 @@ def quat_axis(axis, deg):
     }[axis]
 
 
-# ---- argparse -----------------------------------------------------------
+# 2. arguments (argparse) ------------------------------------------------
 def add_scene_args(p):
     """scene 인자. 앱 기동 전에 호출해도 안전함 (isaaclab 불필요)."""
     g = p.add_argument_group("desk")
-    g.add_argument("--desk-w", type=float, default=DESK_W, help="desk width along y")
-    g.add_argument("--desk-d", type=float, default=DESK_D, help="desk depth along x")
-    g.add_argument("--desk-h", type=float, default=DESK_H, help="floor to top [m]")
+    g.add_argument(
+        "--desk-w",
+        type=float,
+        default=DESK_W,
+        help="desk width along y",
+    )
+    g.add_argument(
+        "--desk-d",
+        type=float,
+        default=DESK_D,
+        help="desk depth along x",
+    )
+    g.add_argument(
+        "--desk-h",
+        type=float,
+        default=DESK_H,
+        help="floor to top [m]",
+    )
     g.add_argument(
         "--desk-usd", default="", help="use a desk USD instead of the procedural one"
     )
@@ -342,9 +382,21 @@ def add_scene_args(p):
     )
 
     g = p.add_argument_group("desk items")
-    g.add_argument("--keyboard", type=int, default=1)
-    g.add_argument("--mousepad", type=int, default=1)
-    g.add_argument("--mouse", type=int, default=1)
+    g.add_argument(
+        "--keyboard",
+        type=int,
+        default=1,
+    )
+    g.add_argument(
+        "--mousepad",
+        type=int,
+        default=1,
+    )
+    g.add_argument(
+        "--mouse",
+        type=int,
+        default=1,
+    )
     g.add_argument(
         "--mouse-rot",
         default="",
@@ -381,8 +433,16 @@ def add_scene_args(p):
         default=0,
         help="0: desk only / 1: two Frankas facing the desk from the person side",
     )
-    g.add_argument("--base-sep", type=float, default=ROBOT_BASE_SEP)
-    g.add_argument("--base-x", type=float, default=ROBOT_BASE_X)
+    g.add_argument(
+        "--base-sep",
+        type=float,
+        default=ROBOT_BASE_SEP,
+    )
+    g.add_argument(
+        "--base-x",
+        type=float,
+        default=ROBOT_BASE_X,
+    )
     g.add_argument(
         "--base-z",
         type=float,
@@ -392,9 +452,21 @@ def add_scene_args(p):
     )
 
     g = p.add_argument_group("render")
-    g.add_argument("--num-envs", type=int, default=1)
-    g.add_argument("--cam-w", type=int, default=1280)
-    g.add_argument("--cam-h", type=int, default=720)
+    g.add_argument(
+        "--num-envs",
+        type=int,
+        default=1,
+    )
+    g.add_argument(
+        "--cam-w",
+        type=int,
+        default=1280,
+    )
+    g.add_argument(
+        "--cam-h",
+        type=int,
+        default=720,
+    )
     # 손목 카메라 2대 (3-view 전환, docs/threeview_camera_upgrade.md).
     # 장착 위치/자세는 Isaac Lab 공식 Franka stack task 의 wrist_cam 값,
     # 화각은 LIBERO/robosuite eye_in_hand 스타일 광각 75도.
@@ -426,21 +498,37 @@ def add_scene_args(p):
         help="extra high-res cameras 'x,y,z|x,y,z|...' (eyes; all look at "
         "EGO_TARGET). Empty = off. Rendering cost grows per camera",
     )
-    g.add_argument("--hd-w", type=int, default=1280)
-    g.add_argument("--hd-h", type=int, default=720)
+    g.add_argument(
+        "--hd-w",
+        type=int,
+        default=1280,
+    )
+    g.add_argument(
+        "--hd-h",
+        type=int,
+        default=720,
+    )
 
 
-# ---- scene 조립 ---------------------------------------------------------
+# 3. scene 조립 ---------------------------------------------------------
 def build(a, with_camera=True):
     """scene cfg 생성. AppLauncher 기동 이후에만 호출할 것."""
+    # a: argparse로 받은 인자
+    # a.xxx 로 접근하여 설정을 주입함
     import isaaclab.sim as sim_utils
     from isaaclab.assets import AssetBaseCfg, RigidObjectCfg
     from isaaclab.scene import InteractiveSceneCfg
     from isaaclab.sensors import CameraCfg
     from isaaclab.utils import configclass
 
+    # ./project-DT/IsaacLab/source/isaaclab/isaaclab/scene/ 아래에 있는
+    # interactive_scene_cfg.py -> InteractiveSceneCfg (설정 뼈대)
+    # interactive_scene.py     -> InteractiveScene (cfg 를 실체화)
+
     @configclass
     class OfficeDeskSceneCfg(InteractiveSceneCfg):
+        # InteractiveSceneCfg를 상속해 office scene 부품 필드를 추가
+        # 월드 전체의 바닥과 조명을 정의
         ground = AssetBaseCfg(
             prim_path="/World/ground",
             spawn=sim_utils.GroundPlaneCfg(),
@@ -453,13 +541,17 @@ def build(a, with_camera=True):
 
     cfg = OfficeDeskSceneCfg(num_envs=a.num_envs, env_spacing=4.0)
 
-    # 형광등 느낌의 보조 조명 (책상 위가 너무 평평하지 않게)
+    # 형광등 느낌의 보조 조명 (전체 조명만 있으면 너무 단조로움)
     cfg.key_light = AssetBaseCfg(
         prim_path="/World/key_light",
         init_state=AssetBaseCfg.InitialStateCfg(pos=(0.2, 0.0, 1.6)),
         spawn=sim_utils.DiskLightCfg(intensity=6000.0, radius=0.35),
     )
 
+    # helper functions -------------------------------------------------
+    # 특정 크기의 box를 생성하는 helper (책상 다리, 파티션, 연필꽂이 벽 등)
+    # 정적 오브젝트: 옮기거나 잡을 수 없음. 충돌은 있어서 물체가 얹히거나
+    # 부딪힐 수는 있음 (움직이는 물체는 RigidObjectCfg 로 따로 만듦)
     def static_box(name, pos, size, color, rough=0.6, rot=(1.0, 0.0, 0.0, 0.0)):
         return AssetBaseCfg(
             prim_path="{ENV_REGEX_NS}/" + name,
@@ -473,6 +565,7 @@ def build(a, with_camera=True):
             ),
         )
 
+    # 배경을 위한 정적 오브젝트용 helper
     def static_usd(name, usd, pos, rot=(1.0, 0.0, 0.0, 0.0), scale=(1.0, 1.0, 1.0)):
         # 정적 소품은 시각 맥락이 목적이라 충돌을 붙이지 않음. 붙이면 mesh
         # 볼록껍질이 생겨 나중에 팔이 근처를 지날 때 불필요하게 걸림.
@@ -482,10 +575,13 @@ def build(a, with_camera=True):
             spawn=sim_utils.UsdFileCfg(usd_path=usd, scale=scale),
         )
 
+    # usd 파일이 있다면 그 파일을 사용
+    # 없다면 직접 만든 primitive box를 사용
     def pick_usd(name):
         return prop_usd(name) if a.use_usd else None
 
-    # ---- 책상 (가운데 + 좌우 보조 = 눕힌 디귿) ---------------------------
+    # 책상 (가운데 + 좌우 보조 = 눕힌 디귿)
+    # 상판(마찰 재질이 필요해 직접 조립) + 다리 4개(static_box)로 책상 하나
     def desk_slab(tag, cx, cy, sx, sy, top_z=0.0, color=DESK_COLOR):
         """상판 + 다리 4개. (cx, cy) 는 상판 중심, (sx, sy) 는 x/y 크기.
 
@@ -535,6 +631,8 @@ def build(a, with_camera=True):
                 ),
             )
 
+    # scene 조립 구간
+    # 3-1. 책상 배치
     back_x = -a.desk_d / 2  # 세 책상이 공유하는 뒤쪽 가장자리
     if a.desk_usd:
         cfg.desk = static_usd("Desk", a.desk_usd, (0.0, 0.0, -a.desk_h))
@@ -555,7 +653,7 @@ def build(a, with_camera=True):
                 wy,
             )
 
-    # ---- 파티션 (회색 칸막이. 뒤 + 좌우를 둘러쌈) ------------------------
+    # 3-2. 파티션 배치 (회색 칸막이. 뒤 + 좌우를 둘러쌈)
     if a.partition:
         th = PARTITION_TH
         pz = -a.desk_h + a.partition_h / 2  # 바닥에서 올라옴
@@ -591,7 +689,7 @@ def build(a, with_camera=True):
                 ),
             )
 
-    # ---- 모니터 (긴 기둥 + 그 앞면에 붙는 패널) -------------------------
+    # 3-3. 모니터 정의 (받침대 + 기둥 + 그 앞면에 붙는 패널)
     # 실제 모니터처럼 기둥 위에 얹는 것이 아니라 기둥 앞면(+x, 사람 쪽)에
     # 패널을 붙임. 세로 모니터는 패널만 화면 법선(x축) 기준 90도 돌림.
     panel_usd = pick_usd("monitor_panel")
@@ -682,7 +780,8 @@ def build(a, with_camera=True):
             )
         return panel_h
 
-    # 메인 단상: 눕힌 디귿(아치). 상판 + 양옆 다리, 너비는 모니터 가로폭과 같음
+    # 3-4. 메인 단상
+    # 눕힌 디귿(아치). 상판 + 양옆 다리, 너비는 모니터 가로폭과 같음
     cfg.riser_top = static_box(
         "RiserTop",
         (mon_x, 0.0, a.riser_h - RISER_TH / 2),
@@ -703,8 +802,10 @@ def build(a, with_camera=True):
                 rough=0.5,
             ),
         )
+    # 3-5. 모니터 배치 (정면 모니터. 단상 위에 섬)
     monitor("main", 0.0, portrait=False, base_z=a.riser_h, lift=a.main_lift)
 
+    # 3-6. 모니터 배치 (세로 모니터)
     # 세로: 사람 기준 왼쪽 = -y (오른쪽이면 +y). 화면이 상판에 거의 닿고,
     # 사람 쪽으로 --sub-yaw 만큼 틀어 화면이 정면으로 보이게 함.
     if a.portrait_side != "none":
@@ -735,7 +836,7 @@ def build(a, with_camera=True):
             mx=mx_sub,
         )
 
-    # ---- 연필꽂이 (왼쪽 모니터 앞. 바닥판 + 벽 4장) ----------------------
+    # 3-7. 연필꽂이 (왼쪽 모니터 앞. 바닥판 + 벽 4장)
     if a.holder:
         hx, hy = vec(a.holder_xy)
         ix, iy, wh = HOLDER_INNER
@@ -765,7 +866,7 @@ def build(a, with_camera=True):
                 ),
             )
 
-    # ---- 본체 (오른쪽 파티션에 붙이고, 긴 면을 벽에 나란히) --------------
+    # 3-8. 본체 (오른쪽 파티션에 붙이고, 긴 면을 벽에 나란히)
     if a.pc:
         wr_spec = vec(a.wing_right) if a.wing_right.strip() else None
         y_wall = a.desk_w / 2 + (wr_spec[0] if wr_spec else 0.0)  # 파티션 안쪽면
@@ -789,7 +890,7 @@ def build(a, with_camera=True):
             rough=0.3,
         )
 
-    # ---- 키보드 / 마우스패드 / 마우스 -----------------------------------
+    # 3-9. 키보드
     if a.keyboard:
         kb = pick_usd("keyboard")
         if kb:
@@ -800,6 +901,7 @@ def build(a, with_camera=True):
                 "Keyboard", (KEYBOARD_X, 0.0, kz / 2), (kx, ky, kz), KEYBOARD_COLOR
             )
 
+    # 3-10. 마우스패드
     if a.mousepad:
         mp = pick_usd("mousepad")
         if mp:
@@ -816,6 +918,7 @@ def build(a, with_camera=True):
                 rough=0.9,
             )
 
+    # 3-11. 마우스
     if a.mouse:
         # 마우스는 나중에 정리 대상으로도 쓸 수 있게 rigid body 로 둠
         rigid = sim_utils.RigidBodyPropertiesCfg(
@@ -860,7 +963,9 @@ def build(a, with_camera=True):
             prim_path="{ENV_REGEX_NS}/Mouse", init_state=init, spawn=spawn
         )
 
-    # ---- 정리 대상 물건 (2단계) ----------------------------------------
+    # 3-12. 마커 (정리 대상)
+    # 주어진 갯수 만큼 PARK 위치에 생성만 함 -- 책상 위로 옮기는 것은
+    # episode 마다 생성기/평가기의 reset 담당 (scene 재생성 없이 재배치)
     if a.items > 0:
         rigid = sim_utils.RigidBodyPropertiesCfg(
             solver_position_iteration_count=16,
@@ -873,6 +978,7 @@ def build(a, with_camera=True):
         global MARKER_SHAPE
         MARKER_SHAPE = a.marker_shape
 
+        # marker 하나를 만드는 helper
         def make_item(i):
             """마커 하나. 긴 축은 z 라, 눕히는 회전은 생성기가 reset 때 줌."""
             shape = a.marker_shape
@@ -931,7 +1037,7 @@ def build(a, with_camera=True):
         for i in range(1, min(a.items, MAX_ITEMS) + 1):
             setattr(cfg, f"item_{i}", make_item(i))
 
-    # ---- 로봇 (사람 자리에서 책상을 마주봄) -----------------------------
+    # 3-13. 로봇 (사람 자리에서 책상을 마주봄)
     # 받침대 위에 올려 base 를 상판보다 살짝 아래(--base-z)에 둠.
     # 바닥에 그대로 세우면 상판 높이에서의 유효 반경이 크게 줄어듦.
     if a.robots:
@@ -995,7 +1101,8 @@ def build(a, with_camera=True):
             history_length=6,
         )
 
-    # ---- 카메라 ---------------------------------------------------------
+    # 3-14. 카메라 (ego 1 + wrist 2 = 3-view)
+    # wrist-view 는 panda_hand 에 부착하는 형태라 로봇이 먼저 있어야 함
     if with_camera:
         cfg.scene_cam = CameraCfg(
             prim_path="{ENV_REGEX_NS}/scene_cam",
@@ -1060,6 +1167,7 @@ def build(a, with_camera=True):
                 ),
             )
 
+    # 3-15. scene 요약 로그
     src = "usd" if (a.use_usd and panel_usd) else "primitive"
     print(
         f"[scene] desk {a.desk_w:.2f}x{a.desk_d:.2f}x{a.desk_h:.2f} "

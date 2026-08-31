@@ -29,7 +29,7 @@ robosuite 의 TwoArm 환경이 Panda 2대로 하는 것과 같은 구성.
 import math
 import os
 
-# constants
+# ---- 상수 ---------------------------------------------------------------
 CUBE_SIZE = 0.04  # 큐브 한 변 [m]
 CUBE_HALF = 0.0203  # 상판 위에 놓였을 때의 중심 높이 (0.3mm 여유 포함)
 MAX_CUBES = 6  # scene 에 미리 만들어 두는 개수
@@ -60,20 +60,53 @@ PARK = (2.5, 2.5, 0.5)
 TABLE_BODY_OFFSET = (-0.156, +0.370)
 
 
+# 0. cube 배치 helper -----------------------------------------------------
 def cube_home(i):
     """i 번째(1-base) 큐브의 기본 위치. --randomize 0 일 때만 사용."""
+    # cube_home(1) -> (0.45, 0.00, 0.0203)  탑의 바닥 자리 (고정)
+    # 2번부터는 바닥 자리 주변에 좌우로 번갈아 벌려 놓음
     if i == 1:
         return (0.45, 0.00, CUBE_HALF)
     k = i - 2
     return (0.42 + 0.08 * (k // 2), 0.18 * (1 if k % 2 == 0 else -1), CUBE_HALF)
 
 
+# 1..MAX_CUBES 기본 자리 표 (key = "cube_i")
 CUBE_HOME = {f"cube_{i}": cube_home(i) for i in range(1, MAX_CUBES + 1)}
 
 
-# argparse
+# 1. helper -----------------------------------------------------------------
+def vec(s):
+    """cli로 받는 문자열 설정을 튜플로 변환"""
+    # vec("0.13,0.0,-0.15") -> (0.13, 0.0, -0.15)
+    return tuple(float(x) for x in s.split(","))
+
+
+def usd_ok(path):
+    """usd 경로 사용 가능 여부. 로컬 mount 면 존재 확인, 원격 URL 이면 통과"""
+    if path.startswith(("omniverse://", "http://", "https://")):
+        return True
+    return os.path.exists(path)
+
+
+def _quat_mul(q1, q2):
+    """두 quaternion 곱 (w,x,y,z) 반환"""
+    # q1*q2 = q2 를 먼저 적용하고 q1 을 나중에 적용 (world 기준. 왼쪽이 나중)
+    # e.g. usd_table 의 _quat_mul(z180, table_rot) = 테이블 rot 뒤 z 축 뒤집기
+    w1, x1, y1, z1 = q1
+    w2, x2, y2, z2 = q2
+    return (
+        w1 * w2 - x1 * x2 - y1 * y2 - z1 * z2,
+        w1 * x2 + x1 * w2 + y1 * z2 - z1 * y2,
+        w1 * y2 - x1 * z2 + y1 * w2 + z1 * x2,
+        w1 * z2 + x1 * y2 - y1 * x2 + z1 * w2,
+    )
+
+
+# 2. arguments (argparse) ------------------------------------------------
 def add_scene_args(p):
     """scene 관련 인자. 앱 기동 전에 호출해도 안전함 (isaaclab 불필요)."""
+    # argument groups (argparse)
     g = p.add_argument_group("scene")
     g.add_argument(
         "--layout",
@@ -135,9 +168,21 @@ def add_scene_args(p):
         default="right",
         help="which table to mirror (verified on render: right)",
     )
-    g.add_argument("--num-envs", type=int, default=1)
-    g.add_argument("--cam-w", type=int, default=1280)
-    g.add_argument("--cam-h", type=int, default=720)
+    g.add_argument(
+        "--num-envs",
+        type=int,
+        default=1,
+    )
+    g.add_argument(
+        "--cam-w",
+        type=int,
+        default=1280,
+    )
+    g.add_argument(
+        "--cam-h",
+        type=int,
+        default=720,
+    )
     g.add_argument(
         "--wrist-fov",
         type=float,
@@ -160,31 +205,7 @@ def add_scene_args(p):
     )
 
 
-# helper
-def vec(s):
-    """'a,b,c' -> (a, b, c)"""
-    return tuple(float(x) for x in s.split(","))
-
-
-def usd_ok(path):
-    """로컬 mount 면 존재 확인, 원격 URL 이면 통과."""
-    if path.startswith(("omniverse://", "http://", "https://")):
-        return True
-    return os.path.exists(path)
-
-
-def _quat_mul(q1, q2):
-    w1, x1, y1, z1 = q1
-    w2, x2, y2, z2 = q2
-    return (
-        w1 * w2 - x1 * x2 - y1 * y2 - z1 * z2,
-        w1 * x2 + x1 * w2 + y1 * z2 - z1 * y2,
-        w1 * y2 - x1 * z2 + y1 * w2 + z1 * x2,
-        w1 * z2 + x1 * y2 - y1 * x2 + z1 * w2,
-    )
-
-
-# scene 조립
+# 3. scene 조립 ---------------------------------------------------------
 def build(a, with_camera=True):
     """scene cfg 생성. AppLauncher 기동 이후에만 호출할 것."""
     import isaaclab.sim as sim_utils
@@ -197,7 +218,8 @@ def build(a, with_camera=True):
 
     sep = a.base_sep / 2.0
 
-    # ---- 로봇, 지면, 조명 -------------------------------------------
+    # scene 조립 구간
+    # 3-1. 로봇 2대 + 지면 + 조명 (scene 골격)
     rot_r = (1.0, 0.0, 0.0, 0.0) if a.layout == "parallel" else (0.0, 0.0, 0.0, 1.0)
     pos_r = (0.0, -sep, 0.0) if a.layout == "parallel" else (0.9, -sep, 0.0)
 
@@ -238,7 +260,7 @@ def build(a, with_camera=True):
 
     cfg = DualFrankaSceneCfg(num_envs=a.num_envs, env_spacing=3.0)
 
-    # ---- 접촉 센서 (로봇-로봇/테이블 충돌 감지 -> episode 실패 처리) ----
+    # 3-2. 접촉 센서 (로봇-로봇/테이블 충돌 감지 -> episode 실패 처리)
     # multi-body prim + filter 조합은 API 미지원이라 filter 없이 net force 사용.
     # hand/finger 는 물체를 정상적으로 만지므로 제외하고 link2~7 만 검사함.
     # history_length>0 이면 scene.update 마다 buffer 가 강제 갱신되어
@@ -254,7 +276,8 @@ def build(a, with_camera=True):
         history_length=6,
     )
 
-    # ---- 카메라 ------------------------------------------------------
+    # 3-3. 카메라 (ego 1 + wrist 2 = 3-view)
+    # wrist-view 는 panda_hand 에 부착하는 형태라 로봇과 함께 만들어짐
     if with_camera:
         cfg.scene_cam = CameraCfg(
             prim_path="{ENV_REGEX_NS}/scene_cam",
@@ -300,7 +323,8 @@ def build(a, with_camera=True):
         cfg.wrist_cam_l = wrist_cam_cfg("RobotL")
         cfg.wrist_cam_r = wrist_cam_cfg("RobotR")
 
-    # ---- 테이블 ------------------------------------------------------
+    # 3-4. 테이블
+    # 테이블 경로/생성 helper 셋 -> 아래 mode 분기(has_table)에서 사용
     def table_path():
         u = a.table_usd
         if u.startswith(("/", "omniverse://")):
@@ -384,7 +408,7 @@ def build(a, with_camera=True):
         pos=(0.0, 0.0, -1.05 if has_table else 0.0)
     )
 
-    # ---- 큐브 --------------------------------------------------------
+    # 3-5. 큐브 (정리 대상)
     # 항상 MAX_CUBES 개를 만들어 두고, episode 마다 필요한 개수만 배치함.
     # 안 쓰는 것은 PARK 로 치움 (scene 재생성 없이 개수 변경 가능).
     cube_dir = f"{ISAAC_NUCLEUS_DIR}/Props/Blocks"
@@ -397,6 +421,7 @@ def build(a, with_camera=True):
         disable_gravity=False,
     )
 
+    # cube 하나를 만드는 helper
     def make_cube(i):
         color = CUBE_COLORS[i - 1]
         prim = "{ENV_REGEX_NS}/Cube_" + str(i)
@@ -421,6 +446,7 @@ def build(a, with_camera=True):
     for i in range(1, MAX_CUBES + 1):
         setattr(cfg, f"cube_{i}", make_cube(i))
 
+    # 3-6. scene 요약 로그
     print(
         f"[scene] layout={a.layout} base_sep={a.base_sep} table={a.table} "
         f"mirror={a.table_mirror}/{a.mirror_side} cubes={MAX_CUBES}"

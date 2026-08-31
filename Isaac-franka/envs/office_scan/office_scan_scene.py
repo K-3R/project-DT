@@ -5,47 +5,60 @@
 # Sanghyeok Park, SSL undergraduate
 # Edit 2026-08-31
 # ======================================
-# [ver] office_scan_scene.py 2026-08-31-r5  (ascii-only console/comments)
+# [ver] office_scan_scene.py 2026-08-31-r6  (ascii-only console/comments)
+# r6: 인라인 통합 -- "office 사본 + scan 오버라이드" 2단 구조를 한 벌의
+#     scene 정의로 합침. 동작 동일 (effective JSON / protocol v1 불변).
+#     정리로 사라진 것: _BAKED delattr (메인 모니터/단상은 코드 자체가
+#     없음), _recolor (색을 생성 지점에서 직접), set_defaults 우회
+#     (argparse 기본값 직접), 죽은 knob --riser-h / --main-lift
 # r5: env 격리 -- office_scene import/sys.modules 위임을 물리 사본으로 대체
-#     ([A] 엔진 사본 + [B] scan 오버라이드 합성. effective 값/PROTOCOL 불변
-#      = office-scan-v1 유지, 벤치마크 비교성 보존)
 # r4: 자산 위치 datasets/ -> envs/office_scan/assets/ (env 자산 동거)
 # r3: effective JSON 에 portrait_side / desk_color_raw 기록 (값 불변)
-# r2: protocol 상수 명문화, 구운 가구 정책 2원화(기본값+delattr), 색 변환
-#     helper 통일, scan-pos 자동배치 yaw 부호 반영, effective JSON 로그
+# r2: protocol 상수 명문화, 색 변환 helper 통일, scan-pos 자동배치 yaw
+#     부호 반영, effective JSON 로그
 r"""scan 책상 배경의 office marker task scene (4번째 환경 = 실사 배경).
 
-env 격리 원칙의 자기완결 모듈: [A] = office_scene 엔진 본문 사본 (무수정),
-[B] = scan 오버라이드. 하는 일:
+이 파일 하나가 env4 의 세계 정의 전부다.
+(계보: envs/office/office_scene.py 를 기반으로 scan 델타를 인라인함.
+ task / 로봇 rig / 카메라 / 성공 판정 규약은 office 와 동일)
 
-  1. scan mesh 에 이미 구워진 가구를 procedural 에서 뺌
-       기본값 off (CLI 로 복원 가능): partition / keyboard / mouse(pad)
-       / pc / 세로 모니터 / holder (holder 는 task 고정물이라 eval 이
-       자기 기본값으로 재점등)
-       토글이 없어 cfg 에서 직접 떼는 것: _BAKED (메인 모니터 3피스
-       + 단상 3피스)
-       남기는 것: 책상 상판/다리 -- 벤치 전체의 "충돌" 담당
-  2. scan 책상 USD 를 얹음 (시각 전용, 충돌 없음). scan z0 = office z0
-     = 상판이라 두 면이 자동 일치, z-fighting 은 --scan-lift (기본 2mm)
-     로 회피. 배치는 칸막이 기준 자동 정렬
-  3. 축 변환: scan frame 은 칸막이가 +y, office 는 뒤쪽이 -x
-     -> z 축 +90도 회전 (자동 배치는 yaw 부호를 따라감)
+env2(office) 대비 델타 -- paired benchmark 의 통제 변수:
+  1. scan 책상 USD 를 procedural 책상 위에 얹음 (시각 전용, 충돌 없음)
+  2. 가구 기본값 off: partition / pc / keyboard / mousepad / mouse /
+     세로 모니터 / holder -- scan mesh 에 구워져 있어 중복 방지.
+     CLI 로 복원 가능 (holder 는 task 고정물이라 eval/gen 이 재점등)
+  3. 메인 모니터 3피스 + 단상: 코드 자체가 없음 (토글도 없던 구운
+     가구라 인라인 때 삭제. 세로 모니터만 --portrait-side 로 복원 가능)
+  4. 조명 축소: dome 2500 -> 800, key 6000 -> 2000
+     (촬영 조명이 mesh vertex color 에 이미 구워져 있음)
+  5. procedural 책상/받침대 면 색 = scan 톤 (sRGB -> linear 변환)
+  6. holder +6cm, marker 스폰 영역 축소 (구운 소품과의 간섭 회피)
 
-task(마커/연필꽂이)/로봇 rig/카메라/성공 판정 = office 와 동일.
-확정 상수([B] 의 PROTOCOL 블록) = benchmark 정의의 정본 -- 값을 바꾸면
-PROTOCOL 문자열을 올림 (runner 는 이 값들을 전달하지 않음).
-[A] 원본 = envs/office/office_scene.py (r3). 원본 갱신 시 [A] 재복사 필수.
+확정 상수(아래 protocol 블록) = benchmark 정의의 정본.
+값을 바꾸면 PROTOCOL 문자열을 올릴 것 (runner 는 이 값들을 전달하지 않음).
 """
 
-# =========================================================================
-# [A] office_scene r3 엔진 본문 사본 (무수정 -- 원본과 diff 0 이 계약.
-#     엔진 설명은 원본 헤더 참조)
-# =========================================================================
-
+import json
 import math
 import os
+import sys
 
 PROPS_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "props")
+
+# ---- protocol 확정값 (08-25 실측/튜닝 종결) ------------------------------
+# benchmark 프로토콜의 정본. 값 변경 = PROTOCOL 문자열 버전업
+PROTOCOL = "office-scan-v1"
+# 자산은 env 폴더에 동거 (env4 = 코드 + protocol + 자산 자기완결)
+SCAN_USD_DEFAULT = (
+    "/root/project/Isaac-franka/envs/office_scan/assets/take6_desk_hq.usd"
+)
+SCAN_SCALE_DEFAULT = 1.73  # 자산(칸막이 장축=1.4m 가정) -> 실물(벤치 2.4m)
+DESK_COLOR_DEFAULT = "0.878,0.878,0.871"  # 스캔 상판 클린패치 중앙값 (sRGB)
+PEDESTAL_COLOR_DEFAULT = "0.28,0.28,0.30"  # 로봇 받침대 (어두운 회색)
+HOLDER_XY_DEFAULT = "0.16,-0.36"  # 사람 쪽 +6cm (구운 소품 간섭 회피)
+REGION_DEFAULT = "0.12,0.26,-0.12,0.38"  # 키보드 회피 + 홀더 금지박스 정합
+# 스캔 자산 프레임에서 칸막이 밑선의 y (상판 중앙 원점 기준, 자산 미터)
+SCAN_PARTITION_Y = 0.35
 
 # ---- 책상 ---------------------------------------------------------------
 # 가운데 책상 + 양옆 보조 책상이 눕힌 디귿(디귿을 눕힌 U)을 이룸.
@@ -75,15 +88,12 @@ STAND_BASE = (0.20, 0.24, 0.015)  # 스탠드 받침
 # 기둥은 패널 "중앙"에 붙음 (VESA mount 와 같은 위치).
 # 하단 가장자리에 얹히면 모니터가 아니라 받침대처럼 보임.
 COL_TOP_RATIO = 0.5
-# 단상은 눕힌 디귿(아치) 모양. 상판 + 양옆 다리, 아래는 비어 있음.
-# 너비는 모니터 가로폭과 같게 맞춤 (--panel-inch 를 따라감).
+# 단상(riser) 자체는 scan 에 구워져 있어 만들지 않음. 깊이 값만 남김 --
+# 세로 모니터 열의 자동 x 위치(mon_x)가 "단상이 뒤 가장자리에 붙는 자리"
+# 기준이라 이 값을 계산에 씀
 RISER_D = 0.26  # x 깊이
-RISER_H = 0.10  # 높이 (사용자 실측: 10cm 단상)
-RISER_TH = 0.018  # 상판/다리 두께
-MONITOR_X = -0.25  # 먼 가장자리
 PANEL_COLOR = (0.04, 0.04, 0.05)
 STAND_COLOR = (0.12, 0.12, 0.14)
-RISER_COLOR = (0.74, 0.60, 0.42)  # 밝은 나무색
 
 # ---- 입력장치 -----------------------------------------------------------
 # 치수는 전부 extract_props.py 실측값 (primitive 대체용으로도 같은 값 사용)
@@ -98,7 +108,8 @@ MOUSE_COLOR = (0.16, 0.16, 0.18)
 
 # ---- 본체 (PC 타워) -----------------------------------------------------
 # office.usd 의 SM_PC* 는 전부 화면 일체형(iMac 형)이라 타워로 못 씀.
-# 일반적인 미들타워 치수로 직접 제작. 긴 면(x)이 벽과 나란히 섬.
+# 일반적인 미들타워 치수로 직접 제작.
+# 긴 면(x)이 벽과 나란히 섬.
 PC_SIZE = (0.45, 0.20, 0.45)  # x 깊이(벽 방향), y 폭, z 높이
 PC_GAP_FRONT = 0.15  # 앞쪽(사람이 마주보는) 파티션에서 띄우는 거리
 PC_COLOR = (0.03, 0.03, 0.035)  # 검정
@@ -129,7 +140,7 @@ EGO_TARGET = (0.05, 0.00, 0.08)
 # 바닥판 + 벽 4장으로 직접 제작.
 # (08-10 사용자) ego_view 에 다 보여야 해서 오른쪽으로 이동 (-0.48 -> -0.36).
 # 왼팔 0.59 로 여유, 오른팔 0.88 로 여전히 불가 = handover 구조 유지.
-HOLDER_XY = (0.10, -0.36)
+# scan 판 위치 = protocol 블록의 HOLDER_XY_DEFAULT (+6cm)
 HOLDER_INNER = (0.17, 0.17, 0.100)  # 안쪽 x, y, 벽 높이 (08-10 사용자: 2배 확대)
 HOLDER_WALL = 0.008
 HOLDER_COLOR = (0.20, 0.26, 0.34)
@@ -138,12 +149,13 @@ HOLDER_COLOR = (0.20, 0.26, 0.34)
 # 실물 펜 asset(SM_Pen)은 높이 1.2cm 라 눕힌 것을 집으면 손끝이 상판에 닿음
 # (1번 환경에서 검증된 안전 파지 높이는 2.5cm). 지름 2.6cm 마커로 제작.
 # 길이 14cm 라 양 끝을 각각 잡을 수 있어 공중 handover 에도 맞음.
+# 안 쓰는 마커를 치워두는 자리 (리치/화각 밖. 바닥으로 떨어져 화면에서 사라짐)
 PARK = (2.5, 2.5, 0.5)
 MARKER_R = 0.013
 MARKER_SQ = 0.024  # 각단면(box) mode 의 한 변. 면 파지라 원기둥보다 훨씬 안정
 MARKER_L = 0.140
 # build() 에서 --marker-shape 값으로 설정됨 (item_half_h 등이 참조)
-MARKER_SHAPE = "cyl"
+MARKER_SHAPE = "box"
 MARKER_COLORS = [
     (0.80, 0.15, 0.15),
     (0.15, 0.35, 0.80),
@@ -153,33 +165,55 @@ MARKER_COLORS = [
 MAX_ITEMS = len(MARKER_COLORS)
 
 
+# 0. Marker 배치 helper -------------------------------------------------
 def item_name(i):
+    """marker1, marker2, ... marker primitive 이름 반환"""
+    # item_name(1) -> marker1
     return f"marker{i}"
 
 
 def item_half_h(i):
     """눕혀 놓았을 때의 중심 높이 [m]. usd mode 도 충돌체는 box 라 동일."""
-    h = MARKER_R if MARKER_SHAPE == "cyl" else MARKER_SQ / 2.0
+    # 단면 기준으로 생각했을때의 마커의 중심 높이
+    # 마커 두께 MARKER_SQ / 2 -> 중심 높이
+
+    if MARKER_SHAPE == "cyl":
+        h = MARKER_R
+    else:
+        h = MARKER_SQ / 2.0
+
+    # 마커를 배치할때 상판과 겹친 채 시작하는 것을 막기 위해 0.3 [mm] 올려서 배치
     return h + 0.0003
 
 
 def item_grasp_w(i):
     """gripper 가 무는 폭 [m]. 8cm 초과 금지. usd = box 충돌체."""
-    return 2.0 * MARKER_R if MARKER_SHAPE == "cyl" else MARKER_SQ
+    # 마커 두께 MARKER_SQ
+
+    if MARKER_SHAPE == "cyl":
+        return 2.0 * MARKER_R
+    else:
+        return MARKER_SQ
 
 
-# ---- 헬퍼 ---------------------------------------------------------------
+# 1. helper -------------------------------------------------
 def vec(s):
+    """cli로 받는 문자열 설정을 튜플로 변환"""
+    # vec("0.16,-0.36") -> (0.16, -0.36)
     return tuple(float(x) for x in s.split(","))
 
 
 def prop_usd(name):
     """props/ 에 추출해 둔 USD 경로. 없으면 None (primitive 로 대체)."""
+    # props/ 에 extract_props.py 로 뽑아둔 USD 가 있으면 경로를, 없으면 None
     p = os.path.join(PROPS_DIR, f"{name}.usd")
     return p if os.path.exists(p) else None
 
 
 def quat_mul(q1, q2):
+    """두 quaternion 곱 (w,x,y,z) 반환"""
+    # q1*q2 = q2 를 먼저 적용하고 q1 을 나중에 적용 (world 기준. 왼쪽이 나중)
+    # e.g. quat_mul(quat_axis("z", yaw), quat_axis("y", 90)) = 눕힌 뒤 yaw 회전
     w1, x1, y1, z1 = q1
     w2, x2, y2, z2 = q2
     return (
@@ -192,6 +226,8 @@ def quat_mul(q1, q2):
 
 def quat_axis(axis, deg):
     """x/y/z 축 회전 quaternion (w,x,y,z)."""
+    # e.g. yaw(z)으로 deg 만큼의 회전 -> quaternion으로 반환함
+
     import math
 
     h = math.radians(deg) / 2.0
@@ -203,13 +239,46 @@ def quat_axis(axis, deg):
     }[axis]
 
 
-# ---- argparse -----------------------------------------------------------
+def srgb_to_linear(rgb):
+    """sRGB(0-1) -> linear 변환"""
+    # scan vertex color 는 replica_to_usd 가 이 변환을 거쳐 USD 에 넣음.
+    # procedural 면을 같은 sRGB 값으로 맞추려면 같은 변환을 태워야
+    # 렌더에서 같은 톤으로 만남
+    return tuple(
+        (v / 12.92) if v <= 0.04045 else (((v + 0.055) / 1.055) ** 2.4) for v in rgb
+    )
+
+
+def _tone(color_str, raw):
+    """cli 색 문자열 -> 렌더용 튜플"""
+    # raw=True 면 sRGB 변환 없이 그대로 (office 자체 상수들이 raw 관행)
+    rgb = vec(color_str)
+    return tuple(rgb) if raw else srgb_to_linear(rgb)
+
+
+# 2. arguments (argparse) ------------------------------------------------
 def add_scene_args(p):
     """scene 인자. 앱 기동 전에 호출해도 안전함 (isaaclab 불필요)."""
+    # argument groups (argparse)
     g = p.add_argument_group("desk")
-    g.add_argument("--desk-w", type=float, default=DESK_W, help="desk width along y")
-    g.add_argument("--desk-d", type=float, default=DESK_D, help="desk depth along x")
-    g.add_argument("--desk-h", type=float, default=DESK_H, help="floor to top [m]")
+    g.add_argument(
+        "--desk-w",
+        type=float,
+        default=DESK_W,
+        help="desk width along y",
+    )
+    g.add_argument(
+        "--desk-d",
+        type=float,
+        default=DESK_D,
+        help="desk depth along x",
+    )
+    g.add_argument(
+        "--desk-h",
+        type=float,
+        default=DESK_H,
+        help="floor to top [m]",
+    )
     g.add_argument(
         "--desk-usd", default="", help="use a desk USD instead of the procedural one"
     )
@@ -227,7 +296,7 @@ def add_scene_args(p):
     g.add_argument(
         "--partition",
         type=int,
-        default=1,
+        default=0,  # scan: 칸막이가 구워져 있어 기본 off
         help="1: gray cubicle partitions around the back and both sides",
     )
     g.add_argument(
@@ -237,11 +306,12 @@ def add_scene_args(p):
         help="partition height measured from the floor [m]",
     )
 
+    # argument groups (argparse)
     g = p.add_argument_group("monitors")
     g.add_argument(
         "--portrait-side",
         choices=["left", "right", "none"],
-        default="left",
+        default="none",  # scan: 모니터가 구워져 있어 기본 없음
         help="which side the pivoted (portrait) monitor sits on, "
         "seen by the person at +x (left = -y)",
     )
@@ -250,12 +320,6 @@ def add_scene_args(p):
         type=float,
         default=0.0,
         help="monitor row x; 0 = auto (riser tucked against the back edge)",
-    )
-    g.add_argument(
-        "--riser-h",
-        type=float,
-        default=RISER_H,
-        help="height of the platform under the main monitor [m]",
     )
     g.add_argument(
         "--panel-yaw",
@@ -277,12 +341,6 @@ def add_scene_args(p):
         help="origin convention of props/monitor_panel.usd; check the "
         "'z range' column printed by extract_props.py "
         "(0..h = bottom, -h/2..h/2 = center)",
-    )
-    g.add_argument(
-        "--main-lift",
-        type=float,
-        default=STAND_BASE[2] + 0.075,
-        help="main panel bottom above the riser top [m]",
     )
     g.add_argument(
         "--sub-yaw",
@@ -312,11 +370,12 @@ def add_scene_args(p):
         help="1: use props/*.usd when present / 0: primitives only",
     )
 
+    # argument groups (argparse)
     g = p.add_argument_group("pc tower")
     g.add_argument(
         "--pc",
         type=int,
-        default=1,
+        default=0,  # scan: 본체가 구워져 있어 기본 off
         help="1: PC tower against the right partition, long side to the wall",
     )
     g.add_argument(
@@ -332,23 +391,37 @@ def add_scene_args(p):
         help="distance from the front partition (the one the person faces) [m]",
     )
 
+    # argument groups (argparse)
     g = p.add_argument_group("holder")
     g.add_argument(
         "--holder",
         type=int,
-        default=1,
+        default=0,  # task 고정물이라 eval/gen 이 set_defaults 로 재점등
         help="1: pencil holder in front of the portrait monitor (left arm only)",
     )
     g.add_argument(
         "--holder-xy",
-        default=f"{HOLDER_XY[0]},{HOLDER_XY[1]}",
+        default=HOLDER_XY_DEFAULT,  # scan: 사람 쪽 +6cm (protocol 블록)
         help="pencil holder center x,y [m]",
     )
 
+    # argument groups (argparse)
     g = p.add_argument_group("desk items")
-    g.add_argument("--keyboard", type=int, default=1)
-    g.add_argument("--mousepad", type=int, default=1)
-    g.add_argument("--mouse", type=int, default=1)
+    g.add_argument(
+        "--keyboard",
+        type=int,
+        default=0,  # scan: 구워져 있어 기본 off (mousepad / mouse 도 동일)
+    )
+    g.add_argument(
+        "--mousepad",
+        type=int,
+        default=0,
+    )
+    g.add_argument(
+        "--mouse",
+        type=int,
+        default=0,
+    )
     g.add_argument(
         "--mouse-rot",
         default="",
@@ -378,6 +451,7 @@ def add_scene_args(p):
         "extract_props.py --marker-src; falls back to box if missing)",
     )
 
+    # argument groups (argparse)
     g = p.add_argument_group("robots (stage 3)")
     g.add_argument(
         "--robots",
@@ -385,8 +459,16 @@ def add_scene_args(p):
         default=0,
         help="0: desk only / 1: two Frankas facing the desk from the person side",
     )
-    g.add_argument("--base-sep", type=float, default=ROBOT_BASE_SEP)
-    g.add_argument("--base-x", type=float, default=ROBOT_BASE_X)
+    g.add_argument(
+        "--base-sep",
+        type=float,
+        default=ROBOT_BASE_SEP,
+    )
+    g.add_argument(
+        "--base-x",
+        type=float,
+        default=ROBOT_BASE_X,
+    )
     g.add_argument(
         "--base-z",
         type=float,
@@ -395,10 +477,23 @@ def add_scene_args(p):
         "below the top. A pedestal is built from the floor up to it",
     )
 
+    # argument groups (argparse)
     g = p.add_argument_group("render")
-    g.add_argument("--num-envs", type=int, default=1)
-    g.add_argument("--cam-w", type=int, default=1280)
-    g.add_argument("--cam-h", type=int, default=720)
+    g.add_argument(
+        "--num-envs",
+        type=int,
+        default=1,
+    )
+    g.add_argument(
+        "--cam-w",
+        type=int,
+        default=1280,
+    )
+    g.add_argument(
+        "--cam-h",
+        type=int,
+        default=720,
+    )
     # 손목 카메라 2대 (3-view 전환, docs/threeview_camera_upgrade.md).
     # 장착 위치/자세는 Isaac Lab 공식 Franka stack task 의 wrist_cam 값,
     # 화각은 LIBERO/robosuite eye_in_hand 스타일 광각 75도.
@@ -430,40 +525,140 @@ def add_scene_args(p):
         help="extra high-res cameras 'x,y,z|x,y,z|...' (eyes; all look at "
         "EGO_TARGET). Empty = off. Rendering cost grows per camera",
     )
-    g.add_argument("--hd-w", type=int, default=1280)
-    g.add_argument("--hd-h", type=int, default=720)
+    g.add_argument(
+        "--hd-w",
+        type=int,
+        default=1280,
+    )
+    g.add_argument(
+        "--hd-h",
+        type=int,
+        default=720,
+    )
+
+    # 진입점(entry) 소유 knob 의 기본값 원격 변경: --region 은 eval/gen,
+    # --item-region 은 preview 가 정의하는 인자라 여기서 add_argument 를
+    # 하면 중복 정의 에러가 남. entry 가 인자를 먼저 정의하고 이 함수를
+    # 나중에 부르므로, set_defaults 가 이미 정의된 인자의 default 를
+    # 덮어써서 성립함 (순서 의존 -- entry 쪽 호출 순서를 바꾸지 말 것.
+    # 없는 쪽 키는 무해)
+    p.set_defaults(region=REGION_DEFAULT, item_region=REGION_DEFAULT)
+
+    # argument groups (argparse)
+    g = p.add_argument_group("office-scan desk")
+    g.add_argument(
+        "--scan-usd",
+        default=SCAN_USD_DEFAULT,
+    )
+    g.add_argument(
+        "--scan-yaw",
+        type=float,
+        default=90.0,
+        help="z rotation of the scan asset [deg]. 90 = scan partition (+y) "
+        "faces the office back (-x). auto placement follows the sign; "
+        "values other than +-90 need --scan-pos",
+    )
+    g.add_argument(
+        "--scan-lift",
+        type=float,
+        default=0.002,
+        help="scan mesh z offset above the procedural desk top (anti z-fight)",
+    )
+    g.add_argument(
+        "--scan-scale",
+        type=float,
+        default=SCAN_SCALE_DEFAULT,
+        help="uniform scale of the scan asset (= real_width / scanned_width). "
+        "origin is the desk-top center, so the top stays at z=0",
+    )
+    g.add_argument(
+        "--scan-pos",
+        default="",
+        help="scan asset x,y in the office frame. empty = auto: partition "
+        "line to the desks' back edge, long axis centered on the full bench",
+    )
+    g.add_argument(
+        "--light-dome",
+        type=float,
+        default=800.0,
+        help="dome light intensity (office default 2500 is too hot for the "
+        "scan -- its vertex colors already carry the capture lighting)",
+    )
+    g.add_argument(
+        "--light-key",
+        type=float,
+        default=2000.0,
+        help="key disk light intensity (office default 6000)",
+    )
+    g.add_argument(
+        "--desk-color",
+        default=DESK_COLOR_DEFAULT,
+        help="sRGB 'r,g,b' (0-1) for the procedural desk slabs/legs peeking "
+        "through scan gaps (default = sampled from the scan top). "
+        "empty string = office white",
+    )
+    g.add_argument(
+        "--pedestal-color",
+        default=PEDESTAL_COLOR_DEFAULT,
+        help="sRGB color for the robot pedestal (kept separate from "
+        "--desk-color so the rig stays visually dark). empty = office color",
+    )
+    g.add_argument(
+        "--desk-color-raw",
+        action="store_true",
+        help="pass --desk-color/--pedestal-color through without the "
+        "srgb-to-linear conversion (office's own constants are authored "
+        "raw; use if the converted tone renders too dark)",
+    )
 
 
-# ---- scene 조립 ---------------------------------------------------------
+# 3. scene 조립 ---------------------------------------------------------
 def build(a, with_camera=True):
     """scene cfg 생성. AppLauncher 기동 이후에만 호출할 것."""
+    # a: argparse로 받은 인자
+    # a.xxx 로 접근하여 설정을 주입함
     import isaaclab.sim as sim_utils
     from isaaclab.assets import AssetBaseCfg, RigidObjectCfg
     from isaaclab.scene import InteractiveSceneCfg
     from isaaclab.sensors import CameraCfg
     from isaaclab.utils import configclass
 
+    # ./project-DT/IsaacLab/source/isaaclab/isaaclab/scene/ 아래에 있는
+    # interactive_scene_cfg.py -> InteractiveSceneCfg (설정 뼈대)
+    # interactive_scene.py     -> InteractiveScene (cfg 를 실체화)
+
     @configclass
     class OfficeDeskSceneCfg(InteractiveSceneCfg):
+        # InteractiveSceneCfg를 상속해 office scene 부품 필드를 추가
+        # 월드 전체의 바닥과 조명을 정의
         ground = AssetBaseCfg(
             prim_path="/World/ground",
             spawn=sim_utils.GroundPlaneCfg(),
             init_state=AssetBaseCfg.InitialStateCfg(pos=(0.0, 0.0, -a.desk_h)),
         )
+        # scan 기본 800 (office 는 2500). 촬영 조명이 mesh vertex color
+        # 에 이미 구워져 있어 그대로 두면 이중으로 밝음
         light = AssetBaseCfg(
             prim_path="/World/light",
-            spawn=sim_utils.DomeLightCfg(intensity=2500.0, color=(0.78, 0.78, 0.80)),
+            spawn=sim_utils.DomeLightCfg(
+                intensity=a.light_dome, color=(0.78, 0.78, 0.80)
+            ),
         )
 
     cfg = OfficeDeskSceneCfg(num_envs=a.num_envs, env_spacing=4.0)
 
-    # 형광등 느낌의 보조 조명 (책상 위가 너무 평평하지 않게)
+    # 형광등 느낌의 보조 조명 (전체 조명만 있으면 너무 단조로움)
+    # scan 기본 2000 (office 는 6000)
     cfg.key_light = AssetBaseCfg(
         prim_path="/World/key_light",
         init_state=AssetBaseCfg.InitialStateCfg(pos=(0.2, 0.0, 1.6)),
-        spawn=sim_utils.DiskLightCfg(intensity=6000.0, radius=0.35),
+        spawn=sim_utils.DiskLightCfg(intensity=a.light_key, radius=0.35),
     )
 
+    # helper functions -------------------------------------------------
+    # 특정 크기의 box를 생성하는 helper (책상 다리, 파티션, 연필꽂이 벽 등)
+    # 정적 오브젝트: 옮기거나 잡을 수 없음. 충돌은 있어서 물체가 얹히거나
+    # 부딪힐 수는 있음 (움직이는 물체는 RigidObjectCfg 로 따로 만듦)
     def static_box(name, pos, size, color, rough=0.6, rot=(1.0, 0.0, 0.0, 0.0)):
         return AssetBaseCfg(
             prim_path="{ENV_REGEX_NS}/" + name,
@@ -477,20 +672,26 @@ def build(a, with_camera=True):
             ),
         )
 
+    # 배경을 위한 정적 오브젝트용 helper
     def static_usd(name, usd, pos, rot=(1.0, 0.0, 0.0, 0.0), scale=(1.0, 1.0, 1.0)):
-        # 정적 소품은 시각 맥락이 목적이라 충돌을 붙이지 않음. 붙이면 mesh
-        # 볼록껍질이 생겨 나중에 팔이 근처를 지날 때 불필요하게 걸림.
+        # 정적 오브젝트는 vision context에만 필요한 배경이라 충돌을 넣지 않음
+        # 완전히 배경 역할만 한다
         return AssetBaseCfg(
             prim_path="{ENV_REGEX_NS}/" + name,
             init_state=AssetBaseCfg.InitialStateCfg(pos=pos, rot=rot),
             spawn=sim_utils.UsdFileCfg(usd_path=usd, scale=scale),
         )
 
+    # usd 파일이 있다면 그 파일을 사용
+    # 없다면 직접 만든 primitive box를 사용
     def pick_usd(name):
         return prop_usd(name) if a.use_usd else None
 
-    # ---- 책상 (가운데 + 좌우 보조 = 눕힌 디귿) ---------------------------
-    def desk_slab(tag, cx, cy, sx, sy, top_z=0.0, color=DESK_COLOR):
+    # 책상 (가운데 + 좌우 보조)
+    # 상판(마찰 재질이 필요해 직접 조립) + 다리 4개(static_box)로 책상 하나
+    def desk_slab(
+        tag, cx, cy, sx, sy, top_z=0.0, color=DESK_COLOR, leg_color=LEG_COLOR
+    ):
         """상판 + 다리 4개. (cx, cy) 는 상판 중심, (sx, sy) 는 x/y 크기.
 
         top_z 는 상판 윗면 높이 (기본 0 = 책상 상판). 로봇 받침대처럼
@@ -535,15 +736,26 @@ def build(a, with_camera=True):
                     f"DeskLeg{tag}{i}",
                     (cx + dx, cy + dy, top_z - DESK_TH - hz),
                     (leg, leg, leg_h),
-                    LEG_COLOR,
+                    leg_color,
                 ),
             )
 
+    # scene 조립 구간
+    # 3-1. 책상 배치 (procedural. scan mesh 는 충돌이 없어 이 책상이 충돌 담당)
+    # 면 색 = scan 톤: mesh 틈으로 비치는 부분의 위장색이라 상판/다리를
+    # 같은 톤으로 맞춘다 (빈 문자열이면 office 기본색으로 폴백)
+    if a.desk_color.strip():
+        desk_top_c = desk_leg_c = _tone(a.desk_color, a.desk_color_raw)
+    else:
+        desk_top_c, desk_leg_c = DESK_COLOR, LEG_COLOR
     back_x = -a.desk_d / 2  # 세 책상이 공유하는 뒤쪽 가장자리
     if a.desk_usd:
         cfg.desk = static_usd("Desk", a.desk_usd, (0.0, 0.0, -a.desk_h))
     else:
-        desk_slab("C", 0.0, 0.0, a.desk_d, a.desk_w)
+        desk_slab(
+            "C", 0.0, 0.0, a.desk_d, a.desk_w,
+            color=desk_top_c, leg_color=desk_leg_c,
+        )
         # 보조 책상: 뒤쪽 가장자리를 맞추고 사람 쪽(+x)으로 뻗음.
         # 가운데 책상 "바깥"에 붙음 -> 전체 폭 = 왼쪽 + 가운데 + 오른쪽,
         # 사람 자리(포켓)는 가운데 책상 폭 그대로 남음.
@@ -557,9 +769,61 @@ def build(a, with_camera=True):
                 sgn * (a.desk_w / 2 + wy / 2),
                 wx,
                 wy,
+                color=desk_top_c,
+                leg_color=desk_leg_c,
             )
 
-    # ---- 파티션 (회색 칸막이. 뒤 + 좌우를 둘러쌈) ------------------------
+    # 3-2. scan 책상 mesh (env4 의 핵심 -- 실사 배경)
+    # 시각 전용이라 충돌 없음. 충돌은 3-1 의 procedural 상판이 담당한다.
+    # scan z0 = office z0 = 상판이라 두 면이 자동 일치, z-fighting 은
+    # --scan-lift (기본 2mm) 로 회피
+    # 배치: 칸막이 기준 자동 정렬. scan 칸막이 밑선(자산 y=+SCAN_PARTITION_Y,
+    # yaw 회전 후 office -x 쪽)을 procedural 책상들의 뒤 가장자리(back_x)에
+    # 붙이고, 장축 중심은 wings 비대칭(왼 0.6/오른 0.4)의 벤치 중심에 둠.
+    # 수식은 yaw 부호를 따라감 (+-90 이 아닌 각도는 --scan-pos 수동)
+    if a.scan_pos.strip():
+        scan_px, scan_py = vec(a.scan_pos)
+    else:
+        s_yaw = math.sin(math.radians(a.scan_yaw))
+        if abs(abs(s_yaw) - 1.0) > 0.01:
+            print(
+                "[office-scan] WARNING: auto --scan-pos assumes "
+                "yaw=+-90; give --scan-pos manually for other angles"
+            )
+        wing_l_w = vec(a.wing_left)[0] if a.wing_left.strip() else 0.0
+        wing_r_w = vec(a.wing_right)[0] if a.wing_right.strip() else 0.0
+        scan_px = back_x + SCAN_PARTITION_Y * a.scan_scale * s_yaw
+        scan_py = (wing_r_w - wing_l_w) / 2.0
+
+    # 경로 오타는 Isaac 기동 수십 초 뒤 깊은 곳에서 죽으므로 조기 검사
+    if not os.path.exists(a.scan_usd):
+        sys.exit(f"[office-scan] ERROR: scan usd not found: {a.scan_usd}")
+    # 자산 계보 sidecar (postprocess_mesh 가 만드는 json). 있으면 로그로 남김
+    sidecar = a.scan_usd + ".json"
+    if os.path.exists(sidecar):
+        try:
+            with open(sidecar) as f:
+                sc = json.load(f)
+            print(
+                f"[office-scan] scan sidecar: ver={sc.get('ver')} "
+                f"date={sc.get('date')} scale={sc.get('scale')}"
+            )
+        except (OSError, ValueError):
+            pass
+
+    cfg.scan_desk = AssetBaseCfg(
+        prim_path="{ENV_REGEX_NS}/ScanDesk",
+        init_state=AssetBaseCfg.InitialStateCfg(
+            pos=(scan_px, scan_py, a.scan_lift),
+            rot=quat_axis("z", a.scan_yaw),
+        ),
+        spawn=sim_utils.UsdFileCfg(
+            usd_path=a.scan_usd,
+            scale=(a.scan_scale, a.scan_scale, a.scan_scale),
+        ),
+    )
+
+    # 3-3. 파티션 배치 (기본 off -- scan 에 구워져 있음)
     if a.partition:
         th = PARTITION_TH
         pz = -a.desk_h + a.partition_h / 2  # 바닥에서 올라옴
@@ -595,123 +859,110 @@ def build(a, with_camera=True):
                 ),
             )
 
-    # ---- 모니터 (긴 기둥 + 그 앞면에 붙는 패널) -------------------------
-    # 실제 모니터처럼 기둥 위에 얹는 것이 아니라 기둥 앞면(+x, 사람 쪽)에
-    # 패널을 붙임. 세로 모니터는 패널만 화면 법선(x축) 기준 90도 돌림.
-    panel_usd = pick_usd("monitor_panel")
-    s = a.panel_inch / PANEL_DIAG_IN
-    pt, pw, ph = (v * s for v in PANEL_SIZE)  # 두께, 가로, 세로 (축척 후)
-    yaw_fix = quat_axis("z", a.panel_yaw)
-    # 모니터 열 위치. 0 이면 단상이 책상 뒤 가장자리에 딱 붙도록 자동 계산함
-    # (책상 깊이를 줄이면 모니터가 책상 밖으로 나가는 것을 막음)
-    mon_x = a.monitor_x if a.monitor_x != 0.0 else back_x + RISER_D / 2 + 0.01
-
-    def monitor(tag, y, portrait, base_z, lift, yaw=0.0, mx=None):
-        """받침 + 긴 기둥 + 앞면에 붙는 패널.
-
-        base_z  스탠드가 서는 높이 (단상 위면 단상 높이)
-        lift    패널 아래끝이 base_z 위로 뜨는 양
-                (세로 모니터는 화면이 상판에 거의 닿아야 해서 아주 작음)
-        yaw     사람 쪽으로 트는 각도 [deg]. 스탠드도 같이 돌고, 패널이
-                기둥 앞에 붙는 offset 도 함께 회전함
-        """
-        import math
-
-        if mx is None:
-            mx = mon_x
-        bx, by, bz = STAND_BASE
-        kx, ky = STAND_COL
-        panel_h = pw if portrait else ph  # 화면 높이
-        panel_w = ph if portrait else pw  # 화면 가로
-        panel_bottom = base_z + lift
-        # 기둥 꼭대기가 패널 중앙에 오도록 길이를 잡음 (받침 두께는 뺌)
-        col_h = max(panel_bottom + panel_h * COL_TOP_RATIO - (base_z + bz), 0.02)
-        q_yaw = quat_axis("z", yaw)
-        c, sn = math.cos(math.radians(yaw)), math.sin(math.radians(yaw))
-
-        setattr(
-            cfg,
-            f"stand_base_{tag}",
-            static_box(
-                f"StandBase{tag}",
-                (mx, y, base_z + bz / 2),
-                (bx, by, bz),
-                STAND_COLOR,
-                rot=q_yaw,
-            ),
-        )
-        setattr(
-            cfg,
-            f"stand_col_{tag}",
-            static_box(
-                f"StandCol{tag}",
-                (mx, y, base_z + bz + col_h / 2),
-                (kx, ky, col_h),
-                STAND_COLOR,
-                rot=q_yaw,
-            ),
-        )
-
-        # 기둥 중심 기준 offset 을 먼저 정하고, 그 벡터를 yaw 만큼 돌림.
-        # (돌리지 않으면 패널이 기둥에서 떨어져 보임)
-        ox = kx / 2 + pt / 2  # 기둥 앞면 + 패널 두께 절반
-        oy, pz = 0.0, panel_bottom + panel_h / 2
-        rot = quat_mul(quat_axis("x", 90.0), yaw_fix) if portrait else yaw_fix
-        if panel_usd and a.panel_origin != "center":
-            # bottom 규약: 세로로 돌리면 패널이 -y 로 눕는 만큼 보정 필요
-            if portrait:
-                oy = panel_w / 2
-            else:
-                pz = panel_bottom
-        pos = (
-            mx + ox * c - oy * sn,
-            y + ox * sn + oy * c,
-            pz,
-        )
-        rot = quat_mul(q_yaw, rot)
-
-        if panel_usd:
-            setattr(
-                cfg,
-                f"panel_{tag}",
-                static_usd(f"Panel{tag}", panel_usd, pos, rot=rot, scale=(s, s, s)),
-            )
-        else:
-            # primitive 는 항상 중심 원점이라 크기만 바꿔 놓으면 됨
-            size = (pt, panel_w, panel_h)
-            setattr(
-                cfg,
-                f"panel_{tag}",
-                static_box(f"Panel{tag}", pos, size, PANEL_COLOR, rough=0.25, rot=rot),
-            )
-        return panel_h
-
-    # 메인 단상: 눕힌 디귿(아치). 상판 + 양옆 다리, 너비는 모니터 가로폭과 같음
-    cfg.riser_top = static_box(
-        "RiserTop",
-        (mon_x, 0.0, a.riser_h - RISER_TH / 2),
-        (RISER_D, pw, RISER_TH),
-        RISER_COLOR,
-        rough=0.5,
-    )
-    leg_h = a.riser_h - RISER_TH
-    for i, sgn in enumerate((-1.0, 1.0)):
-        setattr(
-            cfg,
-            f"riser_leg_{i}",
-            static_box(
-                f"RiserLeg{i}",
-                (mon_x, sgn * (pw / 2 - RISER_TH / 2), leg_h / 2),
-                (RISER_D, RISER_TH, leg_h),
-                RISER_COLOR,
-                rough=0.5,
-            ),
-        )
-    monitor("main", 0.0, portrait=False, base_z=a.riser_h, lift=a.main_lift)
-
-    # 세로: 사람 기준 왼쪽 = -y (오른쪽이면 +y). 화면이 상판에 거의 닿고,
-    # 사람 쪽으로 --sub-yaw 만큼 틀어 화면이 정면으로 보이게 함.
+    # 3-4. 세로 모니터 (기본 off -- scan 에 메인 모니터/단상이 구워져 있음)
+    # 메인 모니터와 단상은 코드 자체가 없다: 토글 없이 항상 구워진 가구라
+    # 인라인 때 삭제함 (형태는 office_scene.py 참조).
+    # 세로(portrait) 모니터만 --portrait-side left|right 로 복원 가능
     if a.portrait_side != "none":
+        # -- 패널 공통 준비 --
+        # 모니터는 지금 사용중인 del 모니터와 동일한 구조로 제작:
+        # 받침 + 긴 기둥 + 기둥 앞면(+x, 사람 쪽)에 붙는 패널.
+        # 세로 모니터는 패널만 화면 법선(x축) 기준 90도 돌림
+        panel_usd = pick_usd("monitor_panel")
+        s = a.panel_inch / PANEL_DIAG_IN
+        pt, pw, ph = (v * s for v in PANEL_SIZE)  # 두께, 가로, 세로 (축척 후)
+        yaw_fix = quat_axis("z", a.panel_yaw)
+        # 모니터 열 위치. 0 이면 "(구워진) 단상이 책상 뒤 가장자리에 붙는
+        # 자리" 기준으로 자동 계산 -- scan 속 모니터와 열이 맞음
+        mon_x = a.monitor_x if a.monitor_x != 0.0 else back_x + RISER_D / 2 + 0.01
+
+        def monitor(tag, y, portrait, base_z, lift, yaw=0.0, mx=None):
+            """받침 + 긴 기둥 + 앞면에 붙는 패널.
+
+            base_z  스탠드가 서는 높이 (단상 위면 단상 높이)
+            lift    패널 아래끝이 base_z 위로 뜨는 양
+                    (세로 모니터는 화면이 상판에 거의 닿아야 해서 아주 작음)
+            yaw     사람 쪽으로 트는 각도 [deg]. 스탠드도 같이 돌고, 패널이
+                    기둥 앞에 붙는 offset 도 함께 회전함
+            """
+            import math
+
+            if mx is None:
+                mx = mon_x
+            bx, by, bz = STAND_BASE
+            kx, ky = STAND_COL
+            panel_h = pw if portrait else ph  # 화면 높이
+            panel_w = ph if portrait else pw  # 화면 가로
+            panel_bottom = base_z + lift
+            # 기둥 꼭대기가 패널 중앙에 오도록 길이를 잡음 (받침 두께는 뺌)
+            col_h = max(panel_bottom + panel_h * COL_TOP_RATIO - (base_z + bz), 0.02)
+            q_yaw = quat_axis("z", yaw)
+            c, sn = math.cos(math.radians(yaw)), math.sin(math.radians(yaw))
+
+            setattr(
+                cfg,
+                f"stand_base_{tag}",
+                static_box(
+                    f"StandBase{tag}",
+                    (mx, y, base_z + bz / 2),
+                    (bx, by, bz),
+                    STAND_COLOR,
+                    rot=q_yaw,
+                ),
+            )
+            setattr(
+                cfg,
+                f"stand_col_{tag}",
+                static_box(
+                    f"StandCol{tag}",
+                    (mx, y, base_z + bz + col_h / 2),
+                    (kx, ky, col_h),
+                    STAND_COLOR,
+                    rot=q_yaw,
+                ),
+            )
+
+            # 기둥 중심 기준 offset 을 먼저 정하고, 그 벡터를 yaw 만큼 돌림.
+            # (돌리지 않으면 패널이 기둥에서 떨어져 보임)
+            ox = kx / 2 + pt / 2  # 기둥 앞면 + 패널 두께 절반
+            oy, pz = 0.0, panel_bottom + panel_h / 2
+            rot = quat_mul(quat_axis("x", 90.0), yaw_fix) if portrait else yaw_fix
+
+            # 모니터 패널 usd 가 존재 / 없음 에 따라서 각각 다르게 패널 위치 보정
+            if panel_usd and a.panel_origin != "center":
+                # bottom 규약: 세로로 돌리면 패널이 -y 로 눕는 만큼 보정 필요
+                if portrait:
+                    oy = panel_w / 2
+                else:
+                    pz = panel_bottom
+            pos = (
+                mx + ox * c - oy * sn,
+                y + ox * sn + oy * c,
+                pz,
+            )
+            rot = quat_mul(q_yaw, rot)
+
+            if panel_usd:
+                setattr(
+                    cfg,
+                    f"panel_{tag}",
+                    static_usd(f"Panel{tag}", panel_usd, pos, rot=rot, scale=(s, s, s)),
+                )
+            else:
+                # primitive 는 항상 중심 원점이라 크기만 바꿔 놓으면 됨
+                size = (pt, panel_w, panel_h)
+                setattr(
+                    cfg,
+                    f"panel_{tag}",
+                    static_box(
+                        f"Panel{tag}", pos, size, PANEL_COLOR, rough=0.25, rot=rot
+                    ),
+                )
+            return panel_h
+
+        # -- 세로 모니터 배치 --
+        # 세로: 사람 기준 왼쪽 = -y (오른쪽이면 +y). 화면이 상판에 거의 닿고,
+        # 사람 쪽으로 --sub-yaw 만큼 틀어 화면이 정면으로 보이게 함.
         # 주의: 여기서 지역 import math 를 하면 build() 전체에서 math 가
         # 지역 이름이 되어, 이 분기를 안 타는 --portrait-side none 실행이
         # 아래 손목 카메라 aperture 계산에서 UnboundLocalError 로 죽음.
@@ -738,8 +989,14 @@ def build(a, with_camera=True):
             yaw=yaw,
             mx=mx_sub,
         )
+        src = "usd" if (a.use_usd and panel_usd) else "primitive"
+        print(
+            f"[scene] panels={src} {a.panel_inch:.0f}in -> {pw:.3f}x{ph:.3f}m "
+            f"(scale {s:.3f}, origin={a.panel_origin}) "
+            f"lift sub={a.sub_lift:.3f}"
+        )
 
-    # ---- 연필꽂이 (왼쪽 모니터 앞. 바닥판 + 벽 4장) ----------------------
+    # 3-5. 연필꽂이 (왼쪽 모니터 앞. 바닥판 + 벽 4장)
     if a.holder:
         hx, hy = vec(a.holder_xy)
         ix, iy, wh = HOLDER_INNER
@@ -769,7 +1026,7 @@ def build(a, with_camera=True):
                 ),
             )
 
-    # ---- 본체 (오른쪽 파티션에 붙이고, 긴 면을 벽에 나란히) --------------
+    # 3-6. 본체 (기본 off -- scan 에 구워져 있음. 오른쪽 파티션에 붙임)
     if a.pc:
         wr_spec = vec(a.wing_right) if a.wing_right.strip() else None
         y_wall = a.desk_w / 2 + (wr_spec[0] if wr_spec else 0.0)  # 파티션 안쪽면
@@ -793,7 +1050,7 @@ def build(a, with_camera=True):
             rough=0.3,
         )
 
-    # ---- 키보드 / 마우스패드 / 마우스 -----------------------------------
+    # 3-7. 키보드 (기본 off)
     if a.keyboard:
         kb = pick_usd("keyboard")
         if kb:
@@ -804,6 +1061,7 @@ def build(a, with_camera=True):
                 "Keyboard", (KEYBOARD_X, 0.0, kz / 2), (kx, ky, kz), KEYBOARD_COLOR
             )
 
+    # 3-8. 마우스패드 (기본 off)
     if a.mousepad:
         mp = pick_usd("mousepad")
         if mp:
@@ -820,6 +1078,7 @@ def build(a, with_camera=True):
                 rough=0.9,
             )
 
+    # 3-9. 마우스 (기본 off)
     if a.mouse:
         # 마우스는 나중에 정리 대상으로도 쓸 수 있게 rigid body 로 둠
         rigid = sim_utils.RigidBodyPropertiesCfg(
@@ -864,7 +1123,9 @@ def build(a, with_camera=True):
             prim_path="{ENV_REGEX_NS}/Mouse", init_state=init, spawn=spawn
         )
 
-    # ---- 정리 대상 물건 (2단계) ----------------------------------------
+    # 3-10. 마커 (정리 대상)
+    # 주어진 갯수 만큼 PARK 위치에 생성만 함 -- 책상 위로 옮기는 것은
+    # episode 마다 생성기/평가기의 reset 담당 (scene 재생성 없이 재배치)
     if a.items > 0:
         rigid = sim_utils.RigidBodyPropertiesCfg(
             solver_position_iteration_count=16,
@@ -877,6 +1138,7 @@ def build(a, with_camera=True):
         global MARKER_SHAPE
         MARKER_SHAPE = a.marker_shape
 
+        # marker 하나를 만드는 helper
         def make_item(i):
             """마커 하나. 긴 축은 z 라, 눕히는 회전은 생성기가 reset 때 줌."""
             shape = a.marker_shape
@@ -932,12 +1194,12 @@ def build(a, with_camera=True):
                 spawn=spawn,
             )
 
+        # 마커를 주어진 갯수만큼 생성한다
         for i in range(1, min(a.items, MAX_ITEMS) + 1):
             setattr(cfg, f"item_{i}", make_item(i))
 
-    # ---- 로봇 (사람 자리에서 책상을 마주봄) -----------------------------
-    # 받침대 위에 올려 base 를 상판보다 살짝 아래(--base-z)에 둠.
-    # 바닥에 그대로 세우면 상판 높이에서의 유효 반경이 크게 줄어듦.
+    # 3-11. 로봇 (Franka Panda)
+    # 작은 책상을 생성한 다음 그 위에 로봇 두개를 두어 양팔 작업을 수행할 수 있도록 한다
     if a.robots:
         from isaaclab_assets.robots.franka import FRANKA_PANDA_HIGH_PD_CFG
 
@@ -951,6 +1213,11 @@ def build(a, with_camera=True):
         sep = a.base_sep / 2.0
         # 받침대는 두 팔을 잇는 한 장의 낮은 책상 (따로 세우면 어색함).
         # 상판 윗면이 곧 로봇 base 높이가 됨.
+        # 받침대 색 = scan 톤과 별개의 어두운 톤 (rig 가 배경에 묻히지 않게)
+        if a.pedestal_color.strip():
+            ped_top_c = ped_leg_c = _tone(a.pedestal_color, a.desk_color_raw)
+        else:
+            ped_top_c, ped_leg_c = PEDESTAL_COLOR, LEG_COLOR
         desk_slab(
             "ROB",
             a.base_x,
@@ -958,7 +1225,8 @@ def build(a, with_camera=True):
             PEDESTAL_D,
             a.base_sep + 2 * PEDESTAL_MARGIN,
             top_z=a.base_z,
-            color=PEDESTAL_COLOR,
+            color=ped_top_c,
+            leg_color=ped_leg_c,
         )
         # 손가락 강성 강화: 기본 stiffness 2e3 이면 마커(반지름 1.3cm) 기준
         # 조임력 ~26N 이라 둥근 물체가 grip 안에서 기울고 빠짐 (실측).
@@ -999,7 +1267,9 @@ def build(a, with_camera=True):
             history_length=6,
         )
 
-    # ---- 카메라 ---------------------------------------------------------
+    # 3-12. 카메라
+    # ego-view 하나랑 wrist-view 두개를 만들어서 3-view 카메라를 생성한다
+    # wrist-view는 franka panda에 부착하는 형태라, 먼저 robot이 있어야 한다
     if with_camera:
         cfg.scene_cam = CameraCfg(
             prim_path="{ENV_REGEX_NS}/scene_cam",
@@ -1064,263 +1334,20 @@ def build(a, with_camera=True):
                 ),
             )
 
-    src = "usd" if (a.use_usd and panel_usd) else "primitive"
+    # 3-13. scene 요약 + benchmark 정체성 로그
     print(
         f"[scene] desk {a.desk_w:.2f}x{a.desk_d:.2f}x{a.desk_h:.2f} "
-        f"portrait={a.portrait_side} riser={a.riser_h:.2f} "
+        f"portrait={a.portrait_side} "
         f"items={a.items} robots={bool(a.robots)}"
     )
-    print(
-        f"[scene] panels={src} {a.panel_inch:.0f}in -> {pw:.3f}x{ph:.3f}m "
-        f"(scale {s:.3f}, origin={a.panel_origin}) "
-        f"lift main={a.main_lift:.3f} sub={a.sub_lift:.3f}"
-    )
-    return cfg
-
-
-# =========================================================================
-# [B] scan 오버라이드 (구 office_scan_scene r4 의 델타 -- 합성 구조 보존)
-# =========================================================================
-import json  # noqa: E402
-import sys  # noqa: E402
-
-# [A] 의 원본 함수를 잡아 두고 아래에서 같은 이름으로 오버라이드함
-_office_add_scene_args = add_scene_args
-_office_build = build
-
-# ---- 확정값 (08-25 실측/튜닝 종결) ---------------------------------------
-# 이 블록이 벤치마크 프로토콜의 정본임. 값 변경 = PROTOCOL 버전업.
-PROTOCOL = "office-scan-v1"
-# 자산은 env 폴더에 동거함 (env4 = 코드+프로토콜+자산 자기완결)
-SCAN_USD_DEFAULT = "/root/project/Isaac-franka/envs/office_scan/assets/take6_desk_hq.usd"
-SCAN_SCALE_DEFAULT = 1.73  # 자산(칸막이 장축=1.4m 가정) -> 실물(벤치 2.4m)
-DESK_COLOR_DEFAULT = "0.878,0.878,0.871"  # 스캔 상판 클린패치 중앙값 (sRGB)
-PEDESTAL_COLOR_DEFAULT = "0.28,0.28,0.30"  # 로봇 받침대 (어두운 회색)
-HOLDER_XY_DEFAULT = "0.16,-0.36"  # 사람 쪽 +6cm (구운 소품 간섭 회피)
-REGION_DEFAULT = "0.12,0.26,-0.12,0.38"  # 키보드 회피 + 홀더 금지박스 정합
-# 스캔 자산 프레임에서 칸막이 밑선의 y (상판 중앙 원점 기준, 자산 미터)
-SCAN_PARTITION_Y = 0.35
-# 스캔에 구워져 있는데 토글이 없어 cfg 에서 직접 떼는 부품 (office 의
-# cfg 속성명 규약에 의존함 -- office 가 이름을 바꾸면 build 가 경고함)
-_BAKED = (
-    "stand_base_main",
-    "stand_col_main",
-    "panel_main",
-    "riser_top",
-    "riser_leg_0",
-    "riser_leg_1",
-)
-
-
-def srgb_to_linear(rgb):
-    """sRGB(0-1) -> linear. replica_to_usd 의 감마 규약과 동일한 EOTF 역변환.
-
-    스캔 버텍스컬러는 이 변환을 거쳐 USD 에 들어가므로, 프로시저럴 면을
-    같은 sRGB 값으로 맞추려면 같은 변환을 태워야 렌더에서 만남."""
-    return tuple(
-        (v / 12.92) if v <= 0.04045 else (((v + 0.055) / 1.055) ** 2.4) for v in rgb
-    )
-
-
-def add_scene_args(p):
-    _office_add_scene_args(p)
-    # 구운 가구 정책: "사용자 입력은 존중, 우리는 기본값만 변경".
-    # 스캔에 구워진 가구를 기본 꺼짐으로 깔되, CLI 로 되살릴 수 있음
-    # (스캔과 겹쳐 보이는 것은 사용자 선택). 연필꽂이(holder)는 태스크
-    # 고정물이라 eval script 가 자기 set_defaults 로 다시 켬.
-    # region 은 eval, item_region 은 preview 의 인자라 둘 다 걸어둠
-    # (없는 쪽 키는 무해). 이 기본값 생존은 "eval 의 후속 set_defaults 가
-    # 이 키들을 안 건드림" 에 의존함 -- build 가 effective 값을 로그로
-    # 찍으므로 계약이 깨지면 즉시 드러남.
-    p.set_defaults(
-        partition=0,
-        pc=0,
-        keyboard=0,
-        mousepad=0,
-        mouse=0,
-        portrait_side="none",
-        holder=0,
-        holder_xy=HOLDER_XY_DEFAULT,
-        region=REGION_DEFAULT,
-        item_region=REGION_DEFAULT,
-    )
-    g = p.add_argument_group("office-scan desk")
-    g.add_argument("--scan-usd", default=SCAN_USD_DEFAULT)
-    g.add_argument(
-        "--scan-yaw",
-        type=float,
-        default=90.0,
-        help="z rotation of the scan asset [deg]. 90 = scan partition (+y) "
-        "faces the office back (-x). auto placement follows the sign; "
-        "values other than +-90 need --scan-pos",
-    )
-    g.add_argument(
-        "--scan-lift",
-        type=float,
-        default=0.002,
-        help="scan mesh z offset above the procedural desk top (anti z-fight)",
-    )
-    g.add_argument(
-        "--scan-scale",
-        type=float,
-        default=SCAN_SCALE_DEFAULT,
-        help="uniform scale of the scan asset (= real_width / scanned_width). "
-        "origin is the desk-top center, so the top stays at z=0",
-    )
-    g.add_argument(
-        "--scan-pos",
-        default="",
-        help="scan asset x,y in the office frame. empty = auto: partition "
-        "line to the desks' back edge, long axis centered on the full bench",
-    )
-    g.add_argument(
-        "--light-dome",
-        type=float,
-        default=800.0,
-        help="dome light intensity (office default 2500 is too hot for the "
-        "scan -- its vertex colors already carry the capture lighting)",
-    )
-    g.add_argument(
-        "--light-key",
-        type=float,
-        default=2000.0,
-        help="key disk light intensity (office default 6000)",
-    )
-    g.add_argument(
-        "--desk-color",
-        default=DESK_COLOR_DEFAULT,
-        help="sRGB 'r,g,b' (0-1) for the procedural desk slabs/legs peeking "
-        "through scan gaps (default = sampled from the scan top). "
-        "empty string = office white",
-    )
-    g.add_argument(
-        "--pedestal-color",
-        default=PEDESTAL_COLOR_DEFAULT,
-        help="sRGB color for the robot pedestal (kept separate from "
-        "--desk-color so the rig stays visually dark). empty = office color",
-    )
-    g.add_argument(
-        "--desk-color-raw",
-        action="store_true",
-        help="pass --desk-color/--pedestal-color through without the "
-        "srgb-to-linear conversion (office's own constants are authored "
-        "raw; use if the converted tone renders too dark)",
-    )
-
-
-def _tone(color_str, raw):
-    rgb = vec(color_str)
-    return tuple(rgb) if raw else srgb_to_linear(rgb)
-
-
-def _recolor(cfg, match_fn, lin, what):
-    """조건에 맞는 책상 부품들의 diffuse 를 갈아끼우고 매칭 수를 검증함."""
-    hit = 0
-    for name in list(vars(cfg)):
-        if match_fn(name):
-            getattr(cfg, name).spawn.visual_material.diffuse_color = lin
-            hit += 1
-    if hit == 0:
-        print(
-            f"[office-scan] WARNING: no cfg parts matched for {what} "
-            "(office naming may have changed)"
-        )
-    return hit
-
-
-def build(a, with_camera=True):
-    cfg = _office_build(a, with_camera)
-
-    # 토글이 없는 구운 부품 제거. office 가 부품 이름을 바꾸면 조용히
-    # no-op 이 되므로 (스캔과 프로시저럴 모니터가 겹쳐 보임) 개수 검증
-    removed = [n for n in _BAKED if hasattr(cfg, n)]
-    for n in removed:
-        delattr(cfg, n)
-    if len(removed) != len(_BAKED):
-        missing = sorted(set(_BAKED) - set(removed))
-        print(
-            f"[office-scan] WARNING: baked parts not found in cfg: "
-            f"{missing} (office naming changed? scan may double-render)"
-        )
-
-    # 조명: 스캔 버텍스컬러에는 촬영 조명이 구워져 있어 office 기본값이 과함
-    cfg.light.spawn.intensity = a.light_dome
-    cfg.key_light.spawn.intensity = a.light_key
-
-    # 프로시저럴 책상 면 색 = 스캔 톤 (틈으로 비치는 부분의 위장색).
-    # 로봇 받침대(태그 ROB)는 별도 어두운 톤 유지
-    def is_pedestal(n):
-        return n == "desk_top_ROB" or n.startswith("desk_leg_ROB_")
-
-    def is_desk(n):
-        return (
-            n.startswith("desk_top_") or n.startswith("desk_leg_")
-        ) and not is_pedestal(n)
-
-    if a.desk_color.strip():
-        lin = _tone(a.desk_color, a.desk_color_raw)
-        _recolor(cfg, is_desk, lin, "--desk-color")
-    if a.pedestal_color.strip() and a.robots:
-        ped = _tone(a.pedestal_color, a.desk_color_raw)
-        _recolor(cfg, is_pedestal, ped, "--pedestal-color")
-
-    # 배치: 파티션 기준 자동 정렬. 스캔 칸막이 밑선(자산 y=+SCAN_PARTITION_Y,
-    # yaw 회전 후 office -x 쪽)을 프로시저럴 책상들의 뒤 가장자리(-desk_d/2)에
-    # 붙이고, 장축 중심은 wings 비대칭(왼 0.6/오른 0.4)의 벤치 중심에 둠.
-    # 수식은 yaw 부호를 따라감 (+90/-90 외의 각도는 --scan-pos 수동)
-    if a.scan_pos.strip():
-        px, py = vec(a.scan_pos)
-    else:
-        s_yaw = math.sin(math.radians(a.scan_yaw))
-        if abs(abs(s_yaw) - 1.0) > 0.01:
-            print(
-                "[office-scan] WARNING: auto --scan-pos assumes "
-                "yaw=+-90; give --scan-pos manually for other angles"
-            )
-        wl = vec(a.wing_left)[0] if a.wing_left.strip() else 0.0
-        wr = vec(a.wing_right)[0] if a.wing_right.strip() else 0.0
-        px = -a.desk_d / 2 + SCAN_PARTITION_Y * a.scan_scale * s_yaw
-        py = (wr - wl) / 2.0
-
-    # 스캔 책상 (시각 전용 -- 충돌은 프로시저럴 상판이 담당).
-    # 경로 오타는 Isaac 기동 수십 초 뒤 깊은 곳에서 죽으므로 조기 검사
-    if not os.path.exists(a.scan_usd):
-        sys.exit(f"[office-scan] ERROR: scan usd not found: {a.scan_usd}")
-    sidecar = a.scan_usd + ".json"
-    if os.path.exists(sidecar):
-        try:
-            with open(sidecar) as f:
-                sc = json.load(f)
-            print(
-                f"[office-scan] scan sidecar: ver={sc.get('ver')} "
-                f"date={sc.get('date')} scale={sc.get('scale')}"
-            )
-        except (OSError, ValueError):
-            pass
-
-    import isaaclab.sim as sim_utils
-    from isaaclab.assets import AssetBaseCfg
-
-    cfg.scan_desk = AssetBaseCfg(
-        prim_path="{ENV_REGEX_NS}/ScanDesk",
-        init_state=AssetBaseCfg.InitialStateCfg(
-            pos=(px, py, a.scan_lift),
-            rot=quat_axis("z", a.scan_yaw),
-        ),
-        spawn=sim_utils.UsdFileCfg(
-            usd_path=a.scan_usd,
-            scale=(a.scan_scale, a.scan_scale, a.scan_scale),
-        ),
-    )
-
-    # 벤치마크 정체성 로그: 이 한 줄이 산출물 로그에 남아 "어느 프로토콜/
-    # 자산/배치로 돌았나" 를 사후 추적 가능하게 함 (JSON 파싱 가능)
+    # effective JSON: 이 한 줄이 산출물 로그에 남아 "어느 protocol/자산/
+    # 배치로 돌았나" 를 사후 추적 가능하게 함 (JSON 파싱 가능한 형태)
     eff = {
         "protocol": PROTOCOL,
         "scan_usd": a.scan_usd,
         "scan_scale": a.scan_scale,
         "scan_yaw": a.scan_yaw,
-        "scan_pos": [round(px, 4), round(py, 4)],
+        "scan_pos": [round(scan_px, 4), round(scan_py, 4)],
         "scan_lift": a.scan_lift,
         "desk_color": a.desk_color,
         "desk_color_raw": int(bool(getattr(a, "desk_color_raw", False))),
@@ -1329,8 +1356,9 @@ def build(a, with_camera=True):
         "light_key": a.light_key,
         "holder": int(getattr(a, "holder", 0)),
         "holder_xy": getattr(a, "holder_xy", "?"),
-        # region 은 eval, item_region 은 preview 의 실제 인자 -- set_defaults
-        # 가 양쪽 키를 다 심어 어느 쪽이 진짜인지 여기선 모르므로 둘 다 기록
+        # region 은 eval/gen, item_region 은 preview 의 실제 인자 --
+        # set_defaults 가 양쪽 키를 다 심어 어느 쪽이 진짜인지 여기선
+        # 모르므로 둘 다 기록
         "region": getattr(a, "region", "?"),
         "item_region": getattr(a, "item_region", "?"),
         "furniture": {
