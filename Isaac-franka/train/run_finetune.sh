@@ -47,7 +47,8 @@ PROJ_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 REPO="${REPO:-$PROJ_ROOT/Isaac-GR00T}"
 # 기본 = 3뷰 (our_configs 가 3뷰 요구. 구 1뷰 franka_bimanual_lerobot 은 비교용)
 DATASET="${DATASET:-/data1/huggingface/sslunder54/datasets/franka_bimanual_lerobot_3view}"
-BASE="${BASE:-/data1/huggingface/sslunder54/checkpoints/n1.5-3b}"
+# upstream 기본과 동일 (HF 에서 자동 내려받음). 로컬 스냅샷을 쓰려면 경로를 줄 것
+BASE="${BASE:-nvidia/GR00T-N1.5-3B}"
 OUT="${OUT:-/data1/huggingface/sslunder54/checkpoints/bimanual_$MODE}"
 BATCH="${BATCH:-10}"
 STEPS="${STEPS:-32000}"
@@ -65,10 +66,15 @@ fail() { echo "[ft] ERROR: $1"; exit 1; }
 [ -d "$REPO" ] || fail "repo not found: $REPO"
 [ -f "$REPO/our_configs.py" ] || fail "our_configs.py missing in repo root -- copy it first"
 [ -f "$DATASET/meta/info.json" ] || fail "dataset not found: $DATASET"
-[ -f "$BASE/config.json" ] || fail "base model not found: $BASE"
+# HF repo id 는 로컬 검사 대상이 아님 (경로일 때만 검사)
+case "$BASE" in
+    /*|./*|../*) [ -f "$BASE/config.json" ] || fail "base model not found: $BASE" ;;
+esac
 
 # NFS 마운트 확인 (재부팅 후 마운트 유실 사고 재발 방지)
-if ! df "$DATASET" 2>/dev/null | grep -q "192.168.10.101"; then
+# NFS_HOST 를 비우면 이 검사를 건너뜀 (외부 환경에서 로컬 디스크로 쓸 때)
+NFS_HOST="${NFS_HOST:-192.168.10.101}"
+if [ -n "$NFS_HOST" ] && ! df "$DATASET" 2>/dev/null | grep -q "$NFS_HOST"; then
     fail "NFS not mounted -- df shows local disk for $DATASET"
 fi
 

@@ -18,7 +18,7 @@ different task, keep `bimanual_scene.py` as is and only write a new generator.
 ## Run
 
 ```bash
-docker exec -u 0 -e TERM=xterm -e PYTHONUNBUFFERED=1 gr00t_isaac bash -lc \
+docker exec -u 0 -e TERM=xterm -e PYTHONUNBUFFERED=1 gr00t_dt bash -lc \
 "umask 000 && cd /root/project/Isaac-franka/envs/bimanual && \
 CUDA_VISIBLE_DEVICES=2 /root/project/IsaacLab/isaaclab.sh -p gen_bimanual.py \
   --headless --demos 20 --table dual \

@@ -21,7 +21,7 @@
 #
 # 중단:
 #   pkill -f run_gen_office_scan.sh
-#   docker exec -u 0 gr00t_isaac bash -lc "pkill -9 -f gen_office_scan.py"
+#   docker exec -u 0 gr00t_dt bash -lc "pkill -9 -f gen_office_scan.py"
 # =============================================================================
 set -u
 
@@ -31,13 +31,13 @@ if [ -z "$GPU" ]; then
     echo "[office-scan] ERROR: set GPU explicitly (shared server), e.g. GPU=1 ..."
     exit 1
 fi
-CONTAINER="${CONTAINER:-gr00t_isaac}"
+CONTAINER="${CONTAINER:-gr00t_dt}"
 # repo 자기상대: clone root = container 의 /root/project mount (OUT_CTN 과 동일 위치)
 PROJ_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
 GEN_DIR=/root/project/Isaac-franka/envs/office_scan
 OUT_CTN=/root/project/datasets/office_scan_markers
 OUT_HOST="$PROJ_ROOT/datasets/office_scan_markers"
-NAS=/data1/huggingface/sslunder54/datasets/office_scan_markers
+NAS="${NAS:-/data1/huggingface/sslunder54/datasets/office_scan_markers}"
 LOG_DIR="$PROJ_ROOT/out"
 
 # batch 정의: tag:seed:개수범위:시도횟수 (office 와 동일 seed = 분포 정합)
@@ -50,7 +50,9 @@ if ! touch "$NAS/.write_test" 2>/dev/null; then
     exit 1
 fi
 rm -f "$NAS/.write_test"
-if ! df "$NAS" 2>/dev/null | grep -q "192.168.10.101"; then
+# NFS_HOST 를 비우면 이 검사를 건너뜀 (외부 환경에서 로컬 디스크로 쓸 때)
+NFS_HOST="${NFS_HOST:-192.168.10.101}"
+if [ -n "$NFS_HOST" ] && ! df "$NAS" 2>/dev/null | grep -q "$NFS_HOST"; then
     echo "[office-scan] ERROR: NFS not mounted (df shows local disk)"
     exit 1
 fi

@@ -34,7 +34,7 @@ Replica (facebookresearch/Replica-Dataset) 의 scene mesh 는 방 전체가 한
 
 실행 (container 안. pxr 는 kit app 이 떠야 잡히므로 --headless 필수,
 extract_props.py 와 동일 pattern):
-  docker exec -u 0 gr00t_isaac bash -lc "umask 000 && \
+  docker exec -u 0 gr00t_dt bash -lc "umask 000 && \
     CUDA_VISIBLE_DEVICES=5 /root/project/IsaacLab/isaaclab.sh -p \
     /root/project/Isaac-franka/envs/replica/replica_to_usd.py --headless \
     --ply /root/project/datasets/replica/office_0/mesh.ply \

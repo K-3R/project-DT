@@ -49,11 +49,13 @@ PROJ_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
 HOME_DIR="${HOME_DIR:-$PROJ_ROOT/datasets/franka_bimanual}"
 CTN_DIR=/root/project/datasets/franka_bimanual
 LOG_DIR="$PROJ_ROOT/out"
-CONTAINER="${CONTAINER:-gr00t_isaac}"
+CONTAINER="${CONTAINER:-gr00t_dt}"
 BATCHES="${BATCHES:-0806_152305_n2 0806_152305_n3 0806_213259_n4 0806_182704_n5}"
 
 # NAS mount 확인 (reboot 후 유실 사고 재발 방지)
-if ! df "$NAS" 2>/dev/null | grep -q "192.168.10.101"; then
+# NFS_HOST 를 비우면 이 검사를 건너뜀 (외부 환경에서 로컬 디스크로 쓸 때)
+NFS_HOST="${NFS_HOST:-192.168.10.101}"
+if [ -n "$NFS_HOST" ] && ! df "$NAS" 2>/dev/null | grep -q "$NFS_HOST"; then
     echo "[rr3] ERROR: NFS not mounted (df shows local disk for $NAS)"
     exit 1
 fi

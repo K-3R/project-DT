@@ -12,7 +12,7 @@ built and tasks are run on top of them.
 ## Preset A - two Isaac tables
 
 ```bash
-docker exec -u 0 -e TERM=xterm -e PYTHONUNBUFFERED=1 gr00t_isaac bash -lc \
+docker exec -u 0 -e TERM=xterm -e PYTHONUNBUFFERED=1 gr00t_dt bash -lc \
 "umask 000 && cd /root/project/Isaac-franka/envs/bimanual && \
 CUDA_VISIBLE_DEVICES=2 /root/project/IsaacLab/isaaclab.sh -p archive/dual_franka_scene.py \
   --headless --steps 60 \
@@ -33,7 +33,7 @@ combined surface y[-0.910,+0.910]  center 0  (symmetric, overlapping)
 ## Preset C - procedural table
 
 ```bash
-docker exec -u 0 -e TERM=xterm -e PYTHONUNBUFFERED=1 gr00t_isaac bash -lc \
+docker exec -u 0 -e TERM=xterm -e PYTHONUNBUFFERED=1 gr00t_dt bash -lc \
 "umask 000 && cd /root/project/Isaac-franka/envs/bimanual && \
 CUDA_VISIBLE_DEVICES=2 /root/project/IsaacLab/isaaclab.sh -p archive/dual_franka_scene.py \
   --headless --steps 60 \

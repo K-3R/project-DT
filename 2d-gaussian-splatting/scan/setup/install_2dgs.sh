@@ -28,19 +28,20 @@ if [ ! -d "$CUDA_HOME" ]; then
     exit 1
 fi
 
-# ---- [1] conda env (있으면 건너뜀) ----
+# ---- [1] CUDA 11.8 고정 (env create 앞에 와야 함: environment.yml 이
+#          submodule 두 개를 pip 의존성으로 들고 있어 여기서 nvcc 가 돌아감) ----
+export CUDA_HOME
+export PATH="$CUDA_HOME/bin:$PATH"
+export LD_LIBRARY_PATH="$CUDA_HOME/lib64:${LD_LIBRARY_PATH:-}"
+echo "[install] nvcc: $(nvcc --version | tail -n 1)"
+
+# ---- [2] conda env (있으면 건너뜀) ----
 eval "$(conda shell.bash hook)"
 if ! conda env list | awk '{print $1}' | grep -qx "surfel_splatting"; then
     echo "[install] creating conda env surfel_splatting..."
     conda env create --file environment.yml
 fi
 conda activate surfel_splatting
-
-# ---- [2] CUDA 11.8 고정 ----
-export CUDA_HOME
-export PATH="$CUDA_HOME/bin:$PATH"
-export LD_LIBRARY_PATH="$CUDA_HOME/lib64:${LD_LIBRARY_PATH:-}"
-echo "[install] nvcc: $(nvcc --version | tail -n 1)"
 
 # ---- [3] CUDA submodule build (수 분 소요) ----
 MAX_JOBS=8 pip install submodules/diff-surfel-rasterization

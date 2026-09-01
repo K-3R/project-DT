@@ -25,7 +25,7 @@
 # =============================================================================
 set -u
 
-NAS_BASE=/data1/huggingface/sslunder54/replica
+NAS_BASE="${NAS_BASE:-/data1/huggingface/sslunder54/replica}"
 PARTS_DIR="$NAS_BASE/parts"
 REL=https://github.com/facebookresearch/Replica-Dataset/releases/download/v1.0
 SCENES="${SCENES:-office_0 office_1 office_2 office_3 office_4}"
@@ -35,7 +35,9 @@ SIZE_LAST=1859047808
 
 # ---- 시작 전 검증: NFS mount + 쓰기 가능 ----
 mkdir -p "$PARTS_DIR" || { echo "[replica] ERROR: cannot create $PARTS_DIR"; exit 1; }
-if ! df "$NAS_BASE" 2>/dev/null | grep -q "192.168.10.101"; then
+# NFS_HOST 를 비우면 이 검사를 건너뜀 (외부 환경에서 로컬 디스크로 쓸 때)
+NFS_HOST="${NFS_HOST:-192.168.10.101}"
+if [ -n "$NFS_HOST" ] && ! df "$NAS_BASE" 2>/dev/null | grep -q "$NFS_HOST"; then
     echo "[replica] ERROR: NFS not mounted (df shows local disk)"
     exit 1
 fi

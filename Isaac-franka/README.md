@@ -17,9 +17,11 @@ env4 reuses env2's task/robot/cameras as-is with only the background swapped
 for a real scan, so the success-rate difference vs env2 = a measurement of the
 **background domain gap**.
 
-Isolation principle: `envs/office/` is the unmodified engine; `envs/office_scan/`
-is layered on top via a sys.modules swap. `envs/replica/` is fully isolated and
-does not import office.
+Isolation principle: every environment owns its files. `envs/office_scan/` was
+originally layered over `envs/office/` through a sys.modules swap; since 08-31
+it is a single inlined scene definition with no import of office, so the two
+evolve independently (each scene file's `[ver]` header records the lineage).
+`envs/replica/` is likewise self-contained.
 
 Runner naming rule: `run_{verb}_{env}.sh` (gen/eval/convert x bimanual/office/
 office_scan). The "unmarked runner = a specific env" convention has been abolished.
@@ -42,7 +44,8 @@ ASSETS.md           scan asset ledger (take -> ply -> usd -> scale lineage)
 ### Container paths
 
 `/root/project` is a bind mount of the **clone root of this repo** on the host
-(each person creates their own container and mounts their own clone -- see setting.sh).
+(each person creates their own container and mounts their own clone --
+see [SETUP.md](../SETUP.md)).
 Files edited on the host are reflected immediately (no `docker cp` needed).
 
 | | host | container |
@@ -55,8 +58,8 @@ Files edited on the host are reflected immediately (no `docker cp` needed).
 > `python.sh -c "import isaaclab"` failing with `ModuleNotFoundError: omni.physics`
 > is normal -- it only loads after SimulationApp(AppLauncher).
 
-> If a shell script was edited on Windows, its line endings may be CRLF.
-> Convert with `crlf2lf.sh` at the project root.
+> If a shell script was edited on Windows, its line endings may be CRLF and
+> the container will refuse to run it. Convert with `sed -i 's/\r$//' <file>`.
 
 ### Runtime pitfalls (common to all environments, all field-verified)
 
@@ -67,6 +70,6 @@ Files edited on the host are reflected immediately (no `docker cp` needed).
 | cannot delete outputs from the host | root-owned because of `-u 0` -> prefix the command with `umask 000 &&`. For existing files: `docker exec -u 0 ... chmod -R 777` |
 | process does not exit after `[done]` | `simulation_app.close()` does not return in headless -> the script force-exits with `os._exit(0)` |
 | `OgnSdOnNewFrame: frames discarded` | camera capture is faster than rendering. Only video frames are dropped; no effect on the numbers |
-| USD `FileNotFoundError` | `ISAAC_NUCLEUS_DIR` = `/isaac-assets/Isaac` local mirror. Tables are under `Props/Mounts/` |
+| USD `FileNotFoundError` | `ISAAC_NUCLEUS_DIR` follows the Isaac asset root (NVIDIA's content server by default, or a local mirror mounted at `/isaac-assets`). Tables are under `Props/Mounts/` |
 | S3 download hits a TLS error on the server network | `omniverse-content-production.s3...` is blocked -> download locally and copy over |
 | process inside the container does not die from a host kill | docker exec processes must be killed from inside: `docker exec -u 0 <container> pkill -f <name>`. Do not touch the container itself |

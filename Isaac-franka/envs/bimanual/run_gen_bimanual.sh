@@ -25,7 +25,7 @@
 #
 # 중단 (lane 이 background 자식이라 script 만 죽이면 안 됨):
 #   pkill -f run_gen_bimanual.sh
-#   docker exec -u 0 gr00t_isaac bash -lc "pkill -f gen_bimanual.py"
+#   docker exec -u 0 gr00t_dt bash -lc "pkill -f gen_bimanual.py"
 #
 # timeout / 재시도 / watchdog 없음 -- 각 batch 는 종료까지 대기함.
 # =============================================================================
@@ -39,13 +39,13 @@ if [ -z "$GPU_A" ] || [ -z "$GPU_B" ]; then
     exit 1
 fi
 DEMOS="${DEMOS:-210}"
-CONTAINER="${CONTAINER:-gr00t_isaac}"
+CONTAINER="${CONTAINER:-gr00t_dt}"
 # repo 자기상대: clone root = container 의 /root/project mount (OUT_CTN 과 동일 위치)
 PROJ_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
 GEN_DIR=/root/project/Isaac-franka/envs/bimanual
 OUT_CTN=/root/project/datasets/franka_bimanual
 OUT_HOST="$PROJ_ROOT/datasets/franka_bimanual"
-NAS=/data1/huggingface/sslunder54/datasets/franka_bimanual
+NAS="${NAS:-/data1/huggingface/sslunder54/datasets/franka_bimanual}"
 LOG_DIR="$PROJ_ROOT/out"
 
 # lane 정의: tag:seed:cube개수 (seed 는 batch 마다 달라야 함)
@@ -98,7 +98,9 @@ fi
 rm -f "$NAS/.write_test"
 # NFS mount 확인 (reboot 후 local disk 에 조용히 쌓이는 사고 방지 --
 # office/office_scan runner 와 동일 gate)
-if ! df "$NAS" 2>/dev/null | grep -q "192.168.10.101"; then
+# NFS_HOST 를 비우면 이 검사를 건너뜀 (외부 환경에서 로컬 디스크로 쓸 때)
+NFS_HOST="${NFS_HOST:-192.168.10.101}"
+if [ -n "$NFS_HOST" ] && ! df "$NAS" 2>/dev/null | grep -q "$NFS_HOST"; then
     echo "[gen800] ERROR: NFS not mounted (df shows local disk)"
     exit 1
 fi

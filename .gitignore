@@ -1,5 +1,5 @@
 # vscode settings
-*/.vscode/
+.vscode/
 
 # ignore the checkpoints directory
 checkpoints/
@@ -23,3 +23,6 @@ __pycache__/
 out/
 
 _tmp.sh
+
+# run logs (README/run.sh write these at the clone root)
+*.log

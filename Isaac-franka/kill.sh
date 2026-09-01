@@ -23,7 +23,7 @@
 # 컨테이너 자체는 절대 stop/rm 하지 말 것 - Isaac Lab 설치가 날아감.
 set -uo pipefail
 
-CONTAINER="${CONTAINER:-gr00t_isaac}"
+CONTAINER="${CONTAINER:-gr00t_dt}"
 MODE="${1:-mine}"
 
 if [ "$MODE" = "all" ]; then

@@ -67,7 +67,7 @@ that run's protocol/asset/placement record (for output tracking).
 Preview (background only / check robot and task placement):
 
 ```bash
-docker exec -u 0 -e TERM=xterm -e PYTHONUNBUFFERED=1 gr00t_isaac bash -lc \
+docker exec -u 0 -e TERM=xterm -e PYTHONUNBUFFERED=1 gr00t_dt bash -lc \
   "umask 000 && cd /root/project/Isaac-franka/envs/office_scan && \
    CUDA_VISIBLE_DEVICES=<GPU> /root/project/IsaacLab/isaaclab.sh -p \
    preview_office_scan.py --headless --robots 1 --holder 1 --items 4 \

@@ -31,7 +31,7 @@
 # 중단: pkill -f run_eval_bimanual.sh
 #   (EXIT trap 이 server 와 container client 까지 정리함. trap 이 못 돈
 #    경우의 수동 정리: pkill -f "inference_service.py.*--port <PORT>" +
-#    docker exec -u 0 -e TERM=xterm gr00t_isaac bash -lc
+#    docker exec -u 0 -e TERM=xterm gr00t_dt bash -lc
 #      "pkill -9 -f '[e]val_bimanual.py'")
 # =============================================================================
 set -u
@@ -53,7 +53,7 @@ NUM_CUBES="${NUM_CUBES:-2,5}"
 STEPS_PER_CUBE="${STEPS_PER_CUBE:-250}"
 VIDEO="${VIDEO:-0}"
 DENOISE="${DENOISE:-4}"
-CONTAINER="${CONTAINER:-gr00t_isaac}"
+CONTAINER="${CONTAINER:-gr00t_dt}"
 ISAACLAB="${ISAACLAB:-/root/project/IsaacLab}"
 SCRIPT_DIR="${SCRIPT_DIR:-/root/project/Isaac-franka/envs/bimanual}"
 OUT_DIR="${OUT_DIR:-/root/project/out/eval_bimanual}"
