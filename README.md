@@ -164,10 +164,12 @@ checkpoints/             (git-ignored) fine-tuned checkpoints. The one behind th
 datasets/ out/ output/   (git-ignored) created at runtime
 LICENSE                  MIT -- covers the code authored here
 THIRD_PARTY_NOTICES.md   licenses of the three vendored upstream trees
-setting.sh               initial git bootstrap (not environment setup -- see SETUP.md)
+setting.sh               setup commands in one file (same as SETUP.md)
 ```
 
 ## 5️⃣ License
+
+Copyright (c) 2026 KAIST SSL team-sr
 
 Code authored in this project is MIT (`LICENSE`). The three vendored upstream
 trees keep their own licenses -- see [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
